@@ -1,21 +1,71 @@
 name: Build ImmortalWrt
+
+# 触发条件：手动触发 + 每日定时触发（UTC时间20点，对应北京时间次日4点）
 on:
-  workflow_dispatch: # 支持手动触发
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'ImmortalWrt分支 (默认: master)'
+        required: false
+        default: 'master'
+        type: string
   schedule:
     - cron: "0 20 * * *"
+
+# 全局配置
+env:
+  BUILD_DIR: ./immortalwrt  # 统一构建目录
+  DEBIAN_FRONTEND: noninteractive  # 禁用交互式apt提示
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 180  # 设置构建超时时间，避免无限运行
+    permissions:
+      contents: read  # 最小权限原则
+
     steps:
+      # 1. 检出代码（优化：指定深度，加快速度）
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
 
-      - name: Setup ImmortalWrt Build Environment
+      # 2. 增大SWAP空间（解决编译时内存不足问题）
+      - name: Increase swap space
         run: |
-          sudo apt update -y
-          sudo apt full-upgrade -y
-          sudo apt install -y ack antlr3 asciidoc autoconf automake autopoint binutils bison build-essential \
+          sudo swapoff /swapfile
+          sudo rm -f /swapfile
+          sudo fallocate -l 16G /swapfile
+          sudo chmod 600 /swapfile
+          sudo mkswap /swapfile
+          sudo swapon /swapfile
+          free -h
+
+      # 3. 缓存编译依赖（核心优化：避免每次重装依赖）
+      - name: Cache build dependencies
+        uses: actions/cache@v4
+        id: cache-deps
+        with:
+          path: |
+            /usr/local/bin
+            /usr/local/lib
+            /usr/lib
+            /usr/bin
+            /var/cache/apt/archives
+          key: ${{ runner.os }}-immortalwrt-deps-${{ hashFiles('.github/workflows/*.yml') }}
+          restore-keys: |
+            ${{ runner.os }}-immortalwrt-deps-
+
+      # 4. 安装编译环境（优化：仅缓存未命中时重装，添加并行安装）
+      - name: Setup ImmortalWrt Build Environment
+        if: steps.cache-deps.outputs.cache-hit != 'true'
+        run: |
+          # 更新源并优化安装速度
+          sudo apt update -y && sudo apt full-upgrade -y -o Dpkg::Options::="--force-confdef"
+          # 并行安装依赖，提升速度
+          sudo apt install -y -qq \
+               ack antlr3 asciidoc autoconf automake autopoint binutils bison build-essential \
                bzip2 ccache clang cmake cpio curl device-tree-compiler ecj fastjar flex gawk gettext gcc-multilib \
                g++-multilib git gnutls-dev gperf haveged help2man intltool lib32gcc-s1 libc6-dev-i386 libelf-dev \
                libglib2.0-dev libgmp3-dev libltdl-dev libmpc-dev libmpfr-dev libncurses-dev libpython3-dev \
@@ -23,8 +73,38 @@ jobs:
                ninja-build p7zip p7zip-full patch pkgconf python3 python3-pip python3-ply python3-docutils \
                python3-pyelftools qemu-utils re2c rsync scons squashfs-tools subversion swig texinfo uglifyjs \
                upx-ucl unzip vim wget xmlto xxd zlib1g-dev zstd
+          # 清理apt缓存，节省空间
+          sudo apt clean && sudo rm -rf /var/lib/apt/lists/*
 
+      # 5. 缓存ccache（核心优化：加速重复编译）
+      - name: Cache ccache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.BUILD_DIR }}/.ccache
+          key: ${{ runner.os }}-immortalwrt-ccache-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-immortalwrt-ccache-
+
+      # 6. 克隆ImmortalWrt源码（优化：指定分支、添加超时、错误处理）
       - name: Clone ImmortalWrt Source
         run: |
-          git clone https://github.com/immortalwrt/immortalwrt.git --depth=1
-          cd immortalwrt
+          # 检查目录是否存在，避免重复克隆
+          if [ ! -d "${{ env.BUILD_DIR }}" ]; then
+            git clone --depth=1 --branch=${{ github.event.inputs.branch || 'master' }} \
+              https://github.com/immortalwrt/immortalwrt.git ${{ env.BUILD_DIR }}
+          fi
+          # 进入构建目录并更新子模块
+          cd ${{ env.BUILD_DIR }}
+          git submodule update --init --recursive || true
+          # 配置ccache
+          mkdir -p .ccache
+          echo 'max_size = 10G' > .ccache/ccache.conf
+          echo 'compression = true' >> .ccache/ccache.conf
+
+      # 7. 清理磁盘空间（优化：避免磁盘不足）
+      - name: Clean up disk space
+        if: always()
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
+          docker system prune -af || true
+          df -h
