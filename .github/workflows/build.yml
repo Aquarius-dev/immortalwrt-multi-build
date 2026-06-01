@@ -175,12 +175,18 @@ jobs:
       - name: Build firmware
         run: |
           make -j$(nproc) V=s 2>&1 | tee build.log
+          EXIT_CODE=${PIPESTATUS[0]}
+          echo "MAKE_EXIT_CODE=$EXIT_CODE" >> $GITHUB_ENV
+          if [ $EXIT_CODE -ne 0 ]; then
+            echo "❌ Build failed with exit code $EXIT_CODE"
+            exit $EXIT_CODE
+          fi
 
       - name: Check build output
         run: |
-          echo ">>> bin/targets content:"
-          find bin/targets -type f 2>/dev/null || echo "bin/targets not found"
-          echo ">>> Exit code of build: $?"
+          echo ">>> Build status: ${{ env.MAKE_EXIT_CODE }}"
+          echo ">>> Files in bin/targets:"
+          find bin/targets -type f 2>/dev/null && echo "✅ Firmware found" || echo "❌ bin/targets not found - build produced no output"
 
       - name: Upload firmware
         uses: actions/upload-artifact@v4
@@ -253,7 +259,8 @@ jobs:
             -not -path "*/packages/*" 2>/dev/null || true)
 
           if [ -z "$FIRMWARE_FILES" ]; then
-            echo "No firmware files found, skipping release"
+            echo "⚠️ No firmware files found in artifacts"
+            ls -laR artifacts/
             exit 1
           fi
 
