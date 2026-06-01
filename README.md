@@ -24,43 +24,61 @@
 
 > :bulb: 由于完整编译耗时较长，建议在睡前或出门前触发构建。
 
-## :repeat: 自动触发
+## :repeat: 构建方式
 
-推送到 `main` 或 `master` 分支时会自动触发构建。每次提交将同时编译三个设备的固件。
+- **定时触发**：每月 1 号零点自动构建
+- **手动触发**：在 Actions 页面点击 **Run workflow**
 
 ---
 
 ## :wrench: 自定义软件包
 
-编辑 `.github/workflows/build.yml`，在 **Configure firmware** 步骤中添加需要的软件包：
+### 方式一：config 文件管理（推荐）
 
-```yaml
-echo "CONFIG_PACKAGE_luci=y" >> .config
-echo "CONFIG_PACKAGE_v2ray-core=y" >> .config
-echo "CONFIG_PACKAGE_luci-app-passwall=y" >> .config
+在 `config/` 目录下有各设备的配置文件，直接编辑即可：
+
+```
+config/
+├── r2s.config
+├── xiaomi-r4a.config
+└── phicomm-k2p.config
 ```
 
-常见软件包参考：
-- :globe_with_meridians: **luci** — Web 管理界面
-- :lock: **luci-ssl** — HTTPS 访问
-- :satellite: **luci-app-passwall** / **luci-app-ssr-plus** — 代理相关
-- :file_folder: **luci-app-filetransfer** — 文件传输
-
----
-
-## :computer: 本地构建
-
-如果你有一台 Linux 机器，也可以在本地编译：
+例如添加 `passwall`：
 
 ```bash
-git clone https://github.com/immortalwrt/immortalwrt --branch openwrt-24.10
+echo "CONFIG_PACKAGE_luci-app-passwall=y" >> config/r2s.config
+```
+
+### 方式二：本地生成配置
+
+在 Linux 机器上运行 `make menuconfig` 选择需要的软件包，然后将生成的 `.config` 覆盖到 `config/<设备>.config`：
+
+```bash
+git clone https://github.com/immortalwrt/immortalwrt --branch master
 cd immortalwrt
 ./scripts/feeds update -a
 ./scripts/feeds install -a
-make menuconfig  # 选择目标设备
-make download -j8
-make -j$(nproc) V=s
+make menuconfig              # 选择设备 + 软件包
+cp .config ../config/r2s.config   # 保存配置到仓库
 ```
+
+然后提交推送即可。
+
+### 常见软件包参考
+
+| 软件包 | 说明 |
+|--------|------|
+| `luci` | Web 管理界面 |
+| `luci-ssl` | HTTPS 访问 |
+| `luci-theme-material` | Material 主题（已内置） |
+| `luci-app-passwall` | 代理 |
+| `luci-app-openclash` | 代理 |
+| `luci-app-ssr-plus` | 代理 |
+| `luci-app-upnp` | UPnP 端口映射 |
+| `luci-app-wireguard` | WireGuard VPN |
+| `luci-app-ttyd` | 网页终端 |
+| `luci-app-filetransfer` | 文件传输 |
 
 ---
 
