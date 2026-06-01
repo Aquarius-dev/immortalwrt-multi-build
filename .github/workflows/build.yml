@@ -2,8 +2,8 @@ name: Build ImmortalWrt Firmware
 
 on:
   workflow_dispatch:
-  push:
-    branches: [main, master]
+  schedule:
+    - cron: '0 0 1 * *'
 
 env:
   REPO_BRANCH: master
@@ -159,7 +159,7 @@ jobs:
             download.log
 
   release:
-    if: success() && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+    if: success()
     needs: build
     runs-on: ubuntu-22.04
     permissions:
