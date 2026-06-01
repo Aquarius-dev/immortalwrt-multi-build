@@ -8,9 +8,9 @@
 
 | 设备 | 目标 | 架构 | 固件 |
 |------|------|------|------|
-| :computer: FriendlyARM NanoPi **R2S** | `rockchip/armv8` | :chip: ARM64 | `immortalwrt-rockchip-armv8-friendlyarm_nanopi-r2s` |
-| :signal_strength: Xiaomi Mi Router **4A Gigabit** | `ramips/mt7621` | :chip: MIPS | `immortalwrt-ramips-mt7621-xiaomi_mi-router-4a-gigabit` |
-| :moyai: Phicomm **K2P** | `ramips/mt7621` | :chip: MIPS | `immortalwrt-ramips-mt7621-phicomm_k2p` |
+| :computer: FriendlyARM NanoPi **R2S** | `rockchip/armv8` | ARM64 | `immortalwrt-rockchip-armv8-friendlyarm_nanopi-r2s` |
+| :signal_strength: Xiaomi Mi Router **4A Gigabit** | `ramips/mt7621` | MIPS | `immortalwrt-ramips-mt7621-xiaomi_mi-router-4a-gigabit` |
+| :moyai: Phicomm **K2P** | `ramips/mt7621` | MIPS | `immortalwrt-ramips-mt7621-phicomm_k2p` |
 
 ---
 
