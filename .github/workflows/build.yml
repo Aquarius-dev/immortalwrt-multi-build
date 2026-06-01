@@ -131,6 +131,23 @@ jobs:
           EOF
           chmod +x files/etc/uci-defaults/99-custom-config
 
+      - name: Customize banner
+        run: |
+          mkdir -p files/etc
+          cat > files/etc/banner << EOF
+          ╔══════════════════════════════════════════════╗
+          ║       🏗️ ImmortalWrt Custom Build           ║
+          ╠══════════════════════════════════════════════╣
+          ║  Device   : ${{ matrix.name }}
+          ║  Target   : ${{ matrix.target }}/${{ matrix.subtarget }}
+          ║  LAN IP   : ${{ matrix.lan_ip }}
+          ╠══════════════════════════════════════════════╣
+          ║  Source   : immortalwrt/immortalwrt (master)
+          ║  Commit   : $(git rev-parse --short HEAD)
+          ║  Build    : $(date -u '+%Y-%m-%d %H:%M UTC')
+          ╚══════════════════════════════════════════════╝
+          EOF
+
       - name: Download source packages
         run: |
           make download -j8 V=s 2>&1 | tee download.log
