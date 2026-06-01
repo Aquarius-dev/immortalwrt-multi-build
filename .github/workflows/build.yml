@@ -6,7 +6,7 @@ on:
     branches: [main, master]
 
 env:
-  REPO_BRANCH: openwrt-24.10
+  REPO_BRANCH: master
 
 jobs:
   build:
@@ -157,3 +157,83 @@ jobs:
           path: |
             build.log
             download.log
+
+  release:
+    if: success() && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+    needs: build
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Generate release notes
+        run: |
+          cat > notes.md << EOF
+          ## 🏗️ ImmortalWrt 24.10 固件自动构建
+
+          ### 📋 构建信息
+          | 项目 | 值 |
+          |------|-----|
+          | 🕐 时间 | $(date -u '+%Y-%m-%d %H:%M UTC') |
+          | 🔗 Commit | \`${{ github.sha }}\` |
+          | 🌿 分支 | \`${{ github.ref_name }}\` |
+
+          ### 📦 包含设备
+
+          | 设备 | 平台 | LAN IP | 备注 |
+          |------|------|--------|------|
+          | 🖥️ **NanoPi R2S** | \`rockchip/armv8\` | \`192.168.123.2\` | 完整构建 |
+          | 📡 **Xiaomi Mi Router 4A Gigabit** | \`ramips/mt7621\` | \`192.168.123.6\` | ⚡最小化, 无 DHCP |
+          | 🗿 **Phicomm K2P** | \`ramips/mt7621\` | \`192.168.123.5\` | ⚡最小化, 无 DHCP |
+
+          ### ⚙️ 定制说明
+          - 🔧 **R4A & K2P** 为最小化构建，已移除 **DHCP/DNS (dnsmasq)**、**IPv6**、**USB 模块**、**PPP**
+          - 📍 各设备 LAN IP 已预设（见上表），刷机后即可通过该 IP 访问路由器
+          - ⚠️ 由于 DHCP 已被移除，请确保上级路由或局域网内有其他 DHCP 服务器，否则需要手动配置静态 IP
+
+          ### ⬇️ 刷机说明
+          - **R2S**: 使用 \`*sdcard*\` 或 \`*sysupgrade*\` 镜像写入 TF 卡
+          - **R4A / K2P**: 使用 \`*sysupgrade*\` 在 Web 界面升级，或 \`*factory*\` 在 breed 中刷入
+          EOF
+
+      - name: Create Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="build-$(date +'%Y%m%d-%H%M%S')"
+          echo "Creating release tag: $TAG"
+
+          FIRMWARE_FILES=$(find artifacts -type f \( -name "*.bin" -o -name "*.gz" -o -name "*.img" \) \
+            -not -path "*/packages/*" 2>/dev/null || true)
+
+          if [ -z "$FIRMWARE_FILES" ]; then
+            echo "No firmware files found, skipping release"
+            exit 1
+          fi
+
+          gh release create "$TAG" \
+            $FIRMWARE_FILES \
+            -F notes.md \
+            --title "🏗️ ImmortalWrt 固件 $(date '+%Y-%m-%d')" \
+            --target "${{ github.sha }}"
+
+      - name: Cleanup old releases (keep last 3)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          OLD_TAGS=$(gh release list --json tagName --jq '.[].tagName' --limit 100 \
+            | tail -n +4 || true)
+          if [ -z "$OLD_TAGS" ]; then
+            echo "No old releases to clean"
+          else
+            echo ">>> Cleaning old releases:"
+            echo "$OLD_TAGS" | while read tag; do
+              echo "  Deleting: $tag"
+              gh release delete "$tag" --yes
+              git push --delete origin "$tag" 2>/dev/null || true
+            done
+          fi
