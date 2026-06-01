@@ -2,8 +2,8 @@ name: Build ImmortalWrt Firmware
 
 on:
   workflow_dispatch:
-  push:
-    branches: [main, master]
+  schedule:
+    - cron: '0 0 1 * *'
 
 env:
   REPO_BRANCH: master
@@ -126,10 +126,29 @@ jobs:
           #!/bin/sh
           uci set network.lan.ipaddr='${{ matrix.lan_ip }}'
           uci set luci.main.mediaurlbase='/luci-static/material'
+          uci set system.@system[0].timezone='CST-8'
+          uci set system.@system[0].zonename='Asia/Shanghai'
           uci commit
           exit 0
           EOF
           chmod +x files/etc/uci-defaults/99-custom-config
+
+      - name: Customize banner
+        run: |
+          mkdir -p files/etc
+          cat > files/etc/banner << EOF
+          ╔══════════════════════════════════════════════╗
+          ║       🏗️ ImmortalWrt Custom Build           ║
+          ╠══════════════════════════════════════════════╣
+          ║  Device   : ${{ matrix.name }}
+          ║  Target   : ${{ matrix.target }}/${{ matrix.subtarget }}
+          ║  LAN IP   : ${{ matrix.lan_ip }}
+          ╠══════════════════════════════════════════════╣
+          ║  Source   : immortalwrt/immortalwrt (master)
+          ║  Commit   : $(git rev-parse --short HEAD)
+          ║  Build    : $(date -u '+%Y-%m-%d %H:%M UTC')
+          ╚══════════════════════════════════════════════╝
+          EOF
 
       - name: Download source packages
         run: |
@@ -159,7 +178,7 @@ jobs:
             download.log
 
   release:
-    if: success() && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+    if: success()
     needs: build
     runs-on: ubuntu-22.04
     permissions:
