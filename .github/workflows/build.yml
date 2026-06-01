@@ -201,7 +201,7 @@ jobs:
       - name: Generate release notes
         run: |
           cat > notes.md << EOF
-          ## 🏗️ ImmortalWrt 24.10 固件自动构建
+          ## 🏗️ ImmortalWrt 最新源码固件自动构建
 
           ### 📋 构建信息
           | 项目 | 值 |
