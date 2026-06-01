@@ -126,6 +126,8 @@ jobs:
           #!/bin/sh
           uci set network.lan.ipaddr='${{ matrix.lan_ip }}'
           uci set luci.main.mediaurlbase='/luci-static/material'
+          uci set system.@system[0].timezone='CST-8'
+          uci set system.@system[0].zonename='Asia/Shanghai'
           uci commit
           exit 0
           EOF
