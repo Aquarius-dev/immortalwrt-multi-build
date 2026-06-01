@@ -42,6 +42,10 @@ jobs:
 
       - uses: actions/checkout@v4
         with:
+          path: repo-config
+
+      - uses: actions/checkout@v4
+        with:
           repository: immortalwrt/immortalwrt
           ref: ${{ env.REPO_BRANCH }}
 
@@ -92,32 +96,31 @@ jobs:
           echo "CONFIG_CCACHE=y" >> .config
           make defconfig
 
-          if [ "${{ matrix.name }}" = "xiaomi-r4a" ] || [ "${{ matrix.name }}" = "phicomm-k2p" ]; then
-            echo ">>> Minimizing build and removing DHCP for ${{ matrix.name }}"
-            # Remove DHCP/DNS (dnsmasq) and IPv6 DHCP (odhcpd)
-            sed -i 's/CONFIG_PACKAGE_dnsmasq=y/# CONFIG_PACKAGE_dnsmasq is not set/' .config
-            sed -i 's/CONFIG_PACKAGE_odhcpd=y/# CONFIG_PACKAGE_odhcpd is not set/' .config
-            sed -i 's/CONFIG_PACKAGE_odhcpd-ipv6only=y/# CONFIG_PACKAGE_odhcpd-ipv6only is not set/' .config
+          # Overlay custom config from repo
+          CUSTOM_CONFIG="../repo-config/config/${{ matrix.name }}.config"
+          if [ -f "$CUSTOM_CONFIG" ]; then
+            echo ">>> Overlaying custom config: $CUSTOM_CONFIG"
+            cat "$CUSTOM_CONFIG" >> .config
+            make defconfig
+          fi
 
-            # Remove IPv6 kernel support
+          # Minimization for R4A/K2P (remove packages after defconfig to prevent re-add)
+          if [ "${{ matrix.name }}" = "xiaomi-r4a" ] || [ "${{ matrix.name }}" = "phicomm-k2p" ]; then
+            echo ">>> Minimizing build for ${{ matrix.name }}"
+            for pkg in dnsmasq odhcpd odhcpd-ipv6only; do
+              sed -i "s/CONFIG_PACKAGE_${pkg}=y/# CONFIG_PACKAGE_${pkg} is not set/" .config
+            done
             sed -i 's/CONFIG_IPV6=y/CONFIG_IPV6=n/' .config
             grep -q 'CONFIG_IPV6' .config || echo "CONFIG_IPV6=n" >> .config
-
-            # Remove USB modules (no USB ports on these devices)
             for m in kmod-usb-core kmod-usb-ohci kmod-usb-uhci kmod-usb2; do
               sed -i "s/CONFIG_PACKAGE_${m}=y/# CONFIG_PACKAGE_${m} is not set/" .config
             done
-
-            # Remove PPP (unnecessary if not using PPPoE)
-            sed -i 's/CONFIG_PACKAGE_ppp=y/# CONFIG_PACKAGE_ppp is not set/' .config
-            sed -i 's/CONFIG_PACKAGE_ppp-mod-pppoe=y/# CONFIG_PACKAGE_ppp-mod-pppoe is not set/' .config
-
+            for p in ppp ppp-mod-pppoe; do
+              sed -i "s/CONFIG_PACKAGE_${p}=y/# CONFIG_PACKAGE_${p} is not set/" .config
+            done
             echo ">>> After minimization:"
             grep -E 'dnsmasq|odhcpd|IPV6|kmod-usb|ppp' .config || true
           fi
-
-          # Add luci-theme-material for all devices
-          echo "CONFIG_PACKAGE_luci-theme-material=y" >> .config
 
       - name: Customize system config
         run: |
