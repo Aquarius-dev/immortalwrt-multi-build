@@ -1,95 +1,104 @@
-# ImmortalWrt Multi-Build
+# 🏗️ ImmortalWrt Multi-Build
 
-> :rocket: 使用 GitHub Actions 自动编译 ImmortalWrt 固件，支持三款设备一键构建
-
----
-
-## :package: 支持的设备
-
-| 设备 | 目标 | 架构 | 固件 |
-|------|------|------|------|
-| :computer: FriendlyARM NanoPi **R2S** | `rockchip/armv8` | :chip: ARM64 | `immortalwrt-rockchip-armv8-friendlyarm_nanopi-r2s` |
-| :signal_strength: Xiaomi Mi Router **4A Gigabit** | `ramips/mt7621` | :chip: MIPS | `immortalwrt-ramips-mt7621-xiaomi_mi-router-4a-gigabit` |
-| :moyai: Phicomm **K2P** | `ramips/mt7621` | :chip: MIPS | `immortalwrt-ramips-mt7621-phicomm_k2p` |
+> 🚀 基于 GitHub Actions 自动编译 **ImmortalWrt** 固件，支持三款设备一键构建、自动发布 Release。
 
 ---
 
-## :play_or_pause_button: 使用方式
+## 📦 支持的设备
 
-1. :busts_in_silhouette: 进入仓库 **Actions** 标签页
-2. :point_right: 选择 **Build ImmortalWrt Firmware**
-3. :white_check_mark: 点击 **Run workflow** → **Run workflow**
-4. :hourglass_flowing_sand: 等待构建完成（约 **2–5 小时**）
-5. :inbox_tray: 在运行结果页面下载 Artifacts 中的固件
+| 设备 | 平台 | 架构 | LAN IP |
+|------|------|:----:|:------:|
+| 🖥️ **NanoPi R2S** | `rockchip/armv8` | ARM64 | `192.168.123.2` |
+| 📡 **Xiaomi Mi Router 4A Gigabit** | `ramips/mt7621` | MIPS | `192.168.123.6` |
+| 🗿 **Phicomm K2P** | `ramips/mt7621` | MIPS | `192.168.123.5` |
 
-> :bulb: 由于完整编译耗时较长，建议在睡前或出门前触发构建。
-
-## :repeat: 构建方式
-
-- **定时触发**：每月 1 号零点自动构建
-- **手动触发**：在 Actions 页面点击 **Run workflow**
+> ℹ️ R4A 和 K2P 为最小化构建，已移除 DHCP、IPv6、USB、PPP 等非必要组件。
 
 ---
 
-## :wrench: 自定义软件包
+## 🎮 使用方式
 
-### 方式一：config 文件管理（推荐）
+| 方式 | 说明 |
+|------|------|
+| 📅 **定时构建** | 每月 **1 号 00:00** 自动触发 |
+| 👆 **手动构建** | 进入 **Actions** → **Build ImmortalWrt Firmware** → **Run workflow** |
+| ⏱ **耗时** | 约 **2~5 小时**（完整源码编译） |
+| 📥 **下载** | 构建完成后进入对应 Run → **Artifacts** 或 **Releases** |
 
-在 `config/` 目录下有各设备的配置文件，直接编辑即可：
+> 💡 建议在睡前或出门前触发，回来就能收到固件。
+
+---
+
+## 🛠️ 自定义配置
+
+### 📄 方式一：编辑 config 文件（推荐）
+
+每个设备对应一个配置文件，直接修改后推送即可：
 
 ```
 config/
-├── r2s.config
-├── xiaomi-r4a.config
-└── phicomm-k2p.config
+├── r2s.config              # R2S 附加软件包
+├── xiaomi-r4a.config       # Xiaomi R4A 附加软件包
+└── phicomm-k2p.config      # K2P 附加软件包
 ```
 
-例如添加 `passwall`：
+示例 — 添加 passwall：
 
 ```bash
 echo "CONFIG_PACKAGE_luci-app-passwall=y" >> config/r2s.config
+git add config/r2s.config
+git commit -m "Add passwall for R2S"
+git push
 ```
 
-### 方式二：本地生成配置
-
-在 Linux 机器上运行 `make menuconfig` 选择需要的软件包，然后将生成的 `.config` 覆盖到 `config/<设备>.config`：
+### 🖥️ 方式二：本地 `make menuconfig` 生成
 
 ```bash
+# 拉取源码 → 选择软件包 → 导出配置
 git clone https://github.com/immortalwrt/immortalwrt --branch master
 cd immortalwrt
 ./scripts/feeds update -a
 ./scripts/feeds install -a
-make menuconfig              # 选择设备 + 软件包
-cp .config ../config/r2s.config   # 保存配置到仓库
+make menuconfig                      # 选择设备和软件包
+cp .config /path/to/config/r2s.config  # 覆盖仓库中的配置
 ```
 
-然后提交推送即可。
+### 📋 常用软件包
 
-### 常见软件包参考
-
-| 软件包 | 说明 |
-|--------|------|
-| `luci` | Web 管理界面 |
-| `luci-ssl` | HTTPS 访问 |
-| `luci-theme-material` | Material 主题（已内置） |
-| `luci-app-passwall` | 代理 |
-| `luci-app-openclash` | 代理 |
-| `luci-app-ssr-plus` | 代理 |
-| `luci-app-upnp` | UPnP 端口映射 |
-| `luci-app-wireguard` | WireGuard VPN |
-| `luci-app-ttyd` | 网页终端 |
-| `luci-app-filetransfer` | 文件传输 |
+| 类别 | 软件包 | 用途 |
+|------|--------|------|
+| 🌐 界面 | `luci` + `luci-ssl` | Web 管理 + HTTPS |
+| 🎨 主题 | `luci-theme-material` | Material 主题（已集成） |
+| 🚀 代理 | `luci-app-passwall` / `luci-app-openclash` / `luci-app-ssr-plus` | 科学上网 |
+| 🔌 网络 | `luci-app-upnp` / `luci-app-sqm` | UPnP / QoS |
+| 🔒 VPN | `luci-app-wireguard` / `luci-app-openvpn` | VPN 服务 |
+| 🖥️ 工具 | `luci-app-ttyd` / `luci-app-filetransfer` | 网页终端 / 文件传输 |
 
 ---
 
-## :link: 相关链接
+## 🧪 本地构建
 
-- :octocat: [ImmortalWrt 官方仓库](https://github.com/immortalwrt/immortalwrt)
-- :globe_with_meridians: [ImmortalWrt 官方网站](https://immortalwrt.org)
-- :book: [OpenWrt 构建文档](https://openwrt.org/docs/guide-developer/build-system)
+```bash
+# 完整编译流程
+git clone https://github.com/immortalwrt/immortalwrt --branch master
+cd immortalwrt
+./scripts/feeds update -a
+./scripts/feeds install -a
+make menuconfig
+make download -j8
+make -j$(nproc) V=s
+```
 
 ---
 
-## :scroll: License
+## 📎 相关链接
 
-ImmortalWrt 基于 GPL-2.0 协议开源。
+- [ImmortalWrt 源码](https://github.com/immortalwrt/immortalwrt)
+- [ImmortalWrt 官网](https://immortalwrt.org)
+- [OpenWrt 构建文档](https://openwrt.org/docs/guide-developer/build-system)
+
+---
+
+## 📜 License
+
+ImmortalWrt 基于 **GPL-2.0** 协议开源。
