@@ -192,6 +192,14 @@ jobs:
         with:
           path: artifacts
 
+      - name: Debug artifacts
+        run: |
+          echo ">>> Artifacts structure:"
+          ls -laR artifacts/
+          echo ">>> Find firmware files:"
+          find artifacts -type f \( -name "*.bin" -o -name "*.gz" -o -name "*.img" \) \
+            -not -path "*/packages/*" 2>/dev/null || echo "No files found"
+
       - name: Generate release notes
         run: |
           cat > notes.md << EOF
