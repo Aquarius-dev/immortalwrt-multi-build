@@ -82,6 +82,13 @@ jobs:
           path: .ccache
           key: ccache-${{ matrix.name }}
 
+      - name: Add custom feeds
+        run: |
+          cat >> feeds.conf.default << 'EOF'
+          src-git kenzo https://github.com/kenzok8/openwrt-packages
+          src-git small https://github.com/kenzok8/small
+          EOF
+
       - name: Update feeds
         run: |
           ./scripts/feeds update -a
@@ -101,6 +108,13 @@ jobs:
           if [ -f "$CUSTOM_CONFIG" ]; then
             echo ">>> Overlaying custom config: $CUSTOM_CONFIG"
             cat "$CUSTOM_CONFIG" >> .config
+            make defconfig
+          fi
+
+          # Add openclash for R2S
+          if [ "${{ matrix.name }}" = "r2s" ]; then
+            echo ">>> Adding luci-app-openclash for R2S"
+            echo "CONFIG_PACKAGE_luci-app-openclash=y" >> .config
             make defconfig
           fi
 
