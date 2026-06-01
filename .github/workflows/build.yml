@@ -162,6 +162,12 @@ jobs:
         run: |
           make -j$(nproc) V=s 2>&1 | tee build.log
 
+      - name: Check build output
+        run: |
+          echo ">>> bin/targets content:"
+          find bin/targets -type f 2>/dev/null || echo "bin/targets not found"
+          echo ">>> Exit code of build: $?"
+
       - name: Upload firmware
         uses: actions/upload-artifact@v4
         with:
@@ -191,14 +197,6 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
-
-      - name: Debug artifacts
-        run: |
-          echo ">>> Artifacts structure:"
-          ls -laR artifacts/
-          echo ">>> Find firmware files:"
-          find artifacts -type f \( -name "*.bin" -o -name "*.gz" -o -name "*.img" \) \
-            -not -path "*/packages/*" 2>/dev/null || echo "No files found"
 
       - name: Generate release notes
         run: |
