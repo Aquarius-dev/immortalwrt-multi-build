@@ -235,7 +235,8 @@ jobs:
       contents: write           # 需要写入 Releases 的权限
 
     steps:
-      # ---- 下载所有 build 产出的固件 ----
+      - uses: actions/checkout@v4
+
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
@@ -291,7 +292,6 @@ jobs:
           gh release create "$TAG" \
             $FIRMWARE_FILES \
             -F notes.md \
-            --repo ${{ github.repository }} \
             --title "🏗️ ImmortalWrt 固件 $(date '+%Y-%m-%d')" \
             --target "${{ github.sha }}"
 
@@ -308,7 +308,7 @@ jobs:
             echo ">>> Cleaning old releases:"
             echo "$OLD_TAGS" | while read tag; do
               echo "  Deleting: $tag"
-              gh release delete "$tag" --yes --repo ${{ github.repository }}
+              gh release delete "$tag" --yes
               gh api -X DELETE "repos/${{ github.repository }}/git/refs/tags/$tag" 2>/dev/null || true
             done
           fi
