@@ -193,25 +193,16 @@ jobs:
       - name: Download source packages
         run: |
           make download -j8 V=s 2>&1 | tee download.log
-          [ -d dl ] && find dl -size -1024c -exec ls -l {} \;
 
       # ---- 编译固件 ----
       - name: Build firmware
         run: |
           make -j$(nproc) V=s 2>&1 | tee build.log
           EXIT_CODE=${PIPESTATUS[0]}
-          echo "MAKE_EXIT_CODE=$EXIT_CODE" >> $GITHUB_ENV
           if [ $EXIT_CODE -ne 0 ]; then
             echo "❌ Build failed with exit code $EXIT_CODE"
             exit $EXIT_CODE
           fi
-
-      # ---- 检查固件是否生成 ----
-      - name: Check build output
-        run: |
-          echo ">>> Build status: ${{ env.MAKE_EXIT_CODE }}"
-          echo ">>> Files in bin/targets:"
-          find bin/targets -type f 2>/dev/null && echo "✅ Firmware found" || echo "❌ bin/targets not found - build produced no output"
 
       # ---- 上传固件到 Actions Artifacts ----
       - name: Upload firmware
