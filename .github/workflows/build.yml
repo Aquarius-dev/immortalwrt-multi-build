@@ -40,7 +40,7 @@ jobs:
             profile: phicomm_k2p
             lan_ip: 192.168.123.5
 
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
 
     steps:
       # ---- 释放磁盘空间 ----
@@ -51,13 +51,13 @@ jobs:
           df -h
 
       # ---- 检出 ImmortalWrt 源码到工作目录 ----
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           repository: immortalwrt/immortalwrt
           ref: ${{ env.REPO_BRANCH }}
 
       # ---- 检出你的配置仓库（config 文件、自定义脚本等） ----
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           path: repo-config
 
@@ -86,17 +86,21 @@ jobs:
 
       # ---- 缓存下载的源码包（跨运行复用） ----
       - name: Cache downloads
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: dl
-          key: immortalwrt-${{ env.REPO_BRANCH }}-dl
+          key: immortalwrt-${{ env.REPO_BRANCH }}-${{ matrix.name }}-dl
+          restore-keys: |
+            immortalwrt-${{ env.REPO_BRANCH }}-dl
 
       # ---- 缓存编译器输出（按设备独立缓存） ----
       - name: Cache ccache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: .ccache
           key: ccache-${{ matrix.name }}
+          restore-keys: |
+            ccache-
 
       # ---- 添加第三方软件源（kenzok8 的 passwall 等） ----
       - name: Add custom feeds
@@ -206,7 +210,7 @@ jobs:
 
       # ---- 上传固件到 Actions Artifacts ----
       - name: Upload firmware
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: immortalwrt-${{ matrix.name }}-${{ github.sha }}
           path: |
@@ -217,7 +221,7 @@ jobs:
       # ---- 编译失败时上传日志 ----
       - name: Upload logs on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: build-log-${{ matrix.name }}
           path: |
@@ -230,14 +234,14 @@ jobs:
   release:
     if: success()
     needs: build
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     permissions:
       contents: write           # 需要写入 Releases 的权限
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: artifacts
 
