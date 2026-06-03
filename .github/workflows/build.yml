@@ -40,7 +40,7 @@ jobs:
             profile: phicomm_k2p
             lan_ip: 192.168.123.5
 
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
 
     steps:
       # ---- 释放磁盘空间 ----
@@ -89,7 +89,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: dl
-          key: immortalwrt-${{ env.REPO_BRANCH }}-dl
+          key: immortalwrt-${{ env.REPO_BRANCH }}-${{ matrix.name }}-dl
+          restore-keys: |
+            immortalwrt-${{ env.REPO_BRANCH }}-dl
 
       # ---- 缓存编译器输出（按设备独立缓存） ----
       - name: Cache ccache
@@ -97,6 +99,8 @@ jobs:
         with:
           path: .ccache
           key: ccache-${{ matrix.name }}
+          restore-keys: |
+            ccache-
 
       # ---- 添加第三方软件源（kenzok8 的 passwall 等） ----
       - name: Add custom feeds
@@ -230,7 +234,7 @@ jobs:
   release:
     if: success()
     needs: build
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     permissions:
       contents: write           # 需要写入 Releases 的权限
 
