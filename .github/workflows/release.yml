@@ -1,0 +1,87 @@
+name: Release
+
+on:
+  workflow_run:
+    workflows: [rockchip, ramips-r4a, ramips-k2p]
+    types: [completed]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/download-artifact@v8
+        with:
+          path: artifacts
+
+      - name: Determine batch ID
+        id: batch
+        run: |
+          BATCH_ID=$(date -u +'%Y%m%d')
+          echo "batch_id=$BATCH_ID" >> $GITHUB_OUTPUT
+
+      - name: Generate release notes
+        run: |
+          cat > notes.md << EOF
+          ## ImmortalWrt Firmware Build
+
+          | Project | Value |
+          |---------|-------|
+          | Time | $(date -u '+%Y-%m-%d %H:%M UTC') |
+          | Commit | \`${{ github.sha }}\` |
+          | Branch | \`${{ github.ref_name }}\` |
+
+          ### Devices
+
+          | Device | LAN IP | Notes |
+          |--------|--------|-------|
+          | NanoPi R2S | 192.168.123.2 | Full build |
+          | Xiaomi R4A | 192.168.123.6 | Minimal, no DHCP |
+          | Phicomm K2P | 192.168.123.5 | Minimal, no DHCP |
+          EOF
+
+      - name: Create or update release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="build-${{ steps.batch.outputs.batch_id }}"
+          FIRMWARE_FILES=$(find artifacts -type f \( -name "*.bin" -o -name "*.gz" -o -name "*.img" \) \
+            -not -path "*/packages/*" 2>/dev/null || true)
+
+          if [ -z "$FIRMWARE_FILES" ]; then
+            echo "No firmware files found"
+            exit 0
+          fi
+
+          if gh release view "$TAG" --json tagName > /dev/null 2>&1; then
+            echo "Release $TAG exists, uploading artifacts"
+            gh release upload "$TAG" $FIRMWARE_FILES --clobber
+          else
+            echo "Creating release $TAG"
+            gh release create "$TAG" \
+              $FIRMWARE_FILES \
+              -F notes.md \
+              --title "ImmortalWrt Firmware ${{ steps.batch.outputs.batch_id }}" \
+              --target "${{ github.sha }}"
+          fi
+
+      - name: Cleanup old releases (keep last 3)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          OLD_TAGS=$(gh release list --json tagName --jq '.[].tagName' --limit 100 \
+            | tail -n +4 || true)
+          if [ -z "$OLD_TAGS" ]; then
+            echo "No old releases to clean"
+          else
+            echo "$OLD_TAGS" | while read tag; do
+              echo "Deleting: $tag"
+              gh release delete "$tag" --yes
+              gh api -X DELETE "repos/${{ github.repository }}/git/refs/tags/$tag" 2>/dev/null || true
+            done
+          fi

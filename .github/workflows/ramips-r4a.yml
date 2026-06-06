@@ -1,0 +1,17 @@
+name: ramips-r4a
+
+on:
+  schedule:
+    - cron: '0 0 1 * *'
+  workflow_dispatch:
+
+jobs:
+  build:
+    uses: ./.github/workflows/build-template.yml
+    with:
+      device_name: xiaomi-r4a
+      target: ramips
+      subtarget: mt7621
+      profile: xiaomi_mi-router-4a-gigabit
+      lan_ip: 192.168.123.6
+      config_method: single-file

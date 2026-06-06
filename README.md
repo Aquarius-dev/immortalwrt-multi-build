@@ -1,6 +1,8 @@
 # 🏗️ ImmortalWrt Multi-Build
 
-[![Build Status](https://github.com/Aquarius-dev/immortalwrt-multi-build/actions/workflows/build.yml/badge.svg)](https://github.com/Aquarius-dev/immortalwrt-multi-build/actions/workflows/build.yml)
+[![R2S](https://github.com/Aquarius-dev/immortalwrt-multi-build/actions/workflows/rockchip.yml/badge.svg)](https://github.com/Aquarius-dev/immortalwrt-multi-build/actions/workflows/rockchip.yml)
+[![R4A](https://github.com/Aquarius-dev/immortalwrt-multi-build/actions/workflows/ramips-r4a.yml/badge.svg)](https://github.com/Aquarius-dev/immortalwrt-multi-build/actions/workflows/ramips-r4a.yml)
+[![K2P](https://github.com/Aquarius-dev/immortalwrt-multi-build/actions/workflows/ramips-k2p.yml/badge.svg)](https://github.com/Aquarius-dev/immortalwrt-multi-build/actions/workflows/ramips-k2p.yml)
 
 > 🚀 基于 GitHub Actions 自动编译 **ImmortalWrt** 固件，支持三款设备一键构建、自动发布 Release。
 
