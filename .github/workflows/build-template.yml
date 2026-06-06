@@ -156,6 +156,11 @@ jobs:
       - name: Download source packages
         run: |
           make download -j8 V=s 2>&1 | tee download.log
+          EXIT_CODE=${PIPESTATUS[0]}
+          if [ $EXIT_CODE -ne 0 ]; then
+            echo "Download failed with exit code $EXIT_CODE"
+            exit $EXIT_CODE
+          fi
 
       - name: Build firmware
         run: |
