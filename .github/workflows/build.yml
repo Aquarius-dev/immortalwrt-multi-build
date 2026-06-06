@@ -119,31 +119,31 @@ jobs:
       # ---- 配置编译选项 ----
       - name: Configure firmware
         run: |
-          # 1. 设置目标平台和设备
-          echo "CONFIG_TARGET_${{ matrix.target }}=y" > .config
-          echo "CONFIG_TARGET_${{ matrix.target }}_${{ matrix.subtarget }}=y" >> .config
-          make defconfig
-          echo "CONFIG_TARGET_${{ matrix.target }}_${{ matrix.subtarget }}_DEVICE_${{ matrix.profile }}=y" >> .config
-          echo "CONFIG_CCACHE=y" >> .config
-          make defconfig
-
-          # 2. 叠加你的自定义配置（config/<设备>.config）
-          CUSTOM_CONFIG="../repo-config/config/${{ matrix.name }}.config"
-          if [ -f "$CUSTOM_CONFIG" ]; then
-            echo ">>> Overlaying custom config: $CUSTOM_CONFIG"
-            cat "$CUSTOM_CONFIG" >> .config
-            make defconfig
-          fi
-
-          # 3. R2S 额外添加 OpenClash
           if [ "${{ matrix.name }}" = "r2s" ]; then
-            echo ">>> Adding luci-app-openclash for R2S"
-            echo "CONFIG_PACKAGE_luci-app-openclash=y" >> .config
+            # R2S: 使用 rockchip.config + extra.config + r2s.config
+            cat repo-config/config/rockchip.config \
+                repo-config/config/extra.config \
+                repo-config/config/r2s.config > .config
+            echo "CONFIG_CCACHE=y" >> .config
             make defconfig
-          fi
+          else
+            # 1. 设置目标平台和设备
+            echo "CONFIG_TARGET_${{ matrix.target }}=y" > .config
+            echo "CONFIG_TARGET_${{ matrix.target }}_${{ matrix.subtarget }}=y" >> .config
+            make defconfig
+            echo "CONFIG_TARGET_${{ matrix.target }}_${{ matrix.subtarget }}_DEVICE_${{ matrix.profile }}=y" >> .config
+            echo "CONFIG_CCACHE=y" >> .config
+            make defconfig
 
-          # 4. R4A / K2P 最小化（去掉 DHCP、IPv6、USB、PPP）
-          if [ "${{ matrix.name }}" = "xiaomi-r4a" ] || [ "${{ matrix.name }}" = "phicomm-k2p" ]; then
+            # 2. 叠加自定义配置（config/<设备>.config）
+            CUSTOM_CONFIG="repo-config/config/${{ matrix.name }}.config"
+            if [ -f "$CUSTOM_CONFIG" ]; then
+              echo ">>> Overlaying custom config: $CUSTOM_CONFIG"
+              cat "$CUSTOM_CONFIG" >> .config
+              make defconfig
+            fi
+
+            # 3. R4A / K2P 最小化（去掉 DHCP、IPv6、USB、PPP）
             echo ">>> Minimizing build for ${{ matrix.name }}"
             for pkg in dnsmasq odhcpd odhcpd-ipv6only; do
               sed -i "s/CONFIG_PACKAGE_${pkg}=y/# CONFIG_PACKAGE_${pkg} is not set/" .config
