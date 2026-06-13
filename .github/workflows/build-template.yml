@@ -43,6 +43,12 @@ jobs:
         with:
           path: repo-config
 
+      - name: Apply breed-compatible patches for Xiaomi R4A
+        if: inputs.device_name == 'xiaomi-r4a'
+        run: |
+          patch -p1 < repo-config/patches/ramips/0001-ramips-mt7621-xiaomi-r4a-breed-compatible-partitions.patch
+          patch -p1 < repo-config/patches/ramips/0002-ramips-mt7621-xiaomi-r4a-adjust-image-size.patch
+
       - name: Install build dependencies
         run: |
           sudo apt-get update

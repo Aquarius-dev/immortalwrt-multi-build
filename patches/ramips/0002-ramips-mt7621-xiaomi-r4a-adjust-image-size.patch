@@ -1,0 +1,25 @@
+From: immortalwrt-multi-build
+Subject: ramips: mt7621: Xiaomi R4A adjust IMAGE_SIZE for breed-compatible layout
+
+The firmware partition size is now 0xfb0000 (16064k) instead of 0xe80000
+(14848k) due to the simplified partition layout. Update IMAGE_SIZE
+accordingly.
+
+Signed-off-by: immortalwrt-multi-build
+---
+ target/linux/ramips/image/mt7621.mk | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/target/linux/ramips/image/mt7621.mk b/target/linux/ramips/image/mt7621.mk
+--- a/target/linux/ramips/image/mt7621.mk
++++ b/target/linux/ramips/image/mt7621.mk
+@@ -3567,7 +3567,7 @@ define Device/xiaomi_mi-router-4a-gigabit
+   $(Device/dsa-migration)
+   $(Device/uimage-lzma-loader)
+-  IMAGE_SIZE := 14848k
++  IMAGE_SIZE := 16064k
+   DEVICE_VENDOR := Xiaomi
+   DEVICE_MODEL := Mi Router 4A
+   DEVICE_VARIANT := Gigabit Edition
+-- 
+2.34.1
