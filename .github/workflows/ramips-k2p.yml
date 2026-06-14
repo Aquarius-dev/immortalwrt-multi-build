@@ -2,7 +2,7 @@ name: ramips-k2p
 
 on:
   schedule:
-    - cron: '0 4 1 * *'
+    - cron: '0 4 1 * *'  # K2P at 04:00 UTC
   workflow_dispatch:
 
 jobs:

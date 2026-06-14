@@ -26,6 +26,7 @@ jobs:
   build:
     name: ${{ inputs.device_name }}
     runs-on: ubuntu-24.04
+    timeout-minutes: 420
 
     steps:
       - name: Maximize build space
@@ -38,14 +39,19 @@ jobs:
         with:
           repository: immortalwrt/immortalwrt
           ref: master
+          fetch-depth: 1
 
       - uses: actions/checkout@v6
         with:
           path: repo-config
+          fetch-depth: 1
 
       - name: Apply breed-compatible patches for Xiaomi R4A
         if: inputs.device_name == 'xiaomi-r4a'
         run: |
+          set -e
+          patch -p1 --dry-run < repo-config/patches/ramips/0001-ramips-mt7621-xiaomi-r4a-breed-compatible-partitions.patch
+          patch -p1 --dry-run < repo-config/patches/ramips/0002-ramips-mt7621-xiaomi-r4a-adjust-image-size.patch
           patch -p1 < repo-config/patches/ramips/0001-ramips-mt7621-xiaomi-r4a-breed-compatible-partitions.patch
           patch -p1 < repo-config/patches/ramips/0002-ramips-mt7621-xiaomi-r4a-adjust-image-size.patch
 
@@ -58,7 +64,7 @@ jobs:
             zlib1g-dev file wget qemu-utils upx-ucl autoconf automake libtool libtool-bin \
             libtool-doc curl
           sudo locale-gen en_US.UTF-8
-          sudo pip3 install pyelftools
+          sudo pip3 install pyelftools --break-system-packages 2>/dev/null || sudo pip3 install pyelftools
 
       - name: Configure ccache
         run: |
@@ -74,8 +80,9 @@ jobs:
         uses: actions/cache@v5
         with:
           path: dl
-          key: immortalwrt-master-${{ inputs.device_name }}-dl
+          key: immortalwrt-master-${{ inputs.target }}-${{ inputs.subtarget }}-dl
           restore-keys: |
+            immortalwrt-master-${{ inputs.target }}-${{ inputs.subtarget }}-dl
             immortalwrt-master-dl
 
       - name: Cache ccache
@@ -99,8 +106,15 @@ jobs:
           ./scripts/feeds install -a
 
       - name: Configure firmware
+        shell: bash
         run: |
+          set -euo pipefail
           if [ "${{ inputs.config_method }}" = "multi-file" ]; then
+            for f in repo-config/config/rockchip.config \
+                     repo-config/config/extra.config \
+                     repo-config/config/${{ inputs.device_name }}.config; do
+              [ -f "$f" ] || { echo "Missing config: $f"; exit 1; }
+            done
             cat repo-config/config/rockchip.config \
                 repo-config/config/extra.config \
                 repo-config/config/${{ inputs.device_name }}.config > .config
@@ -130,8 +144,8 @@ jobs:
             for p in ppp ppp-mod-pppoe; do
               sed -i "s/CONFIG_PACKAGE_${p}=y/# CONFIG_PACKAGE_${p} is not set/" .config
             done
-            grep -E 'dnsmasq|odhcpd|IPV6|kmod-usb|ppp' .config || true
           fi
+          grep "^CONFIG_TARGET" .config | sort
 
       - name: Customize system config
         run: |
@@ -160,22 +174,16 @@ jobs:
           EOF
 
       - name: Download source packages
+        shell: bash
         run: |
+          set -o pipefail
           make download -j8 V=s 2>&1 | tee download.log
-          EXIT_CODE=${PIPESTATUS[0]}
-          if [ $EXIT_CODE -ne 0 ]; then
-            echo "Download failed with exit code $EXIT_CODE"
-            exit $EXIT_CODE
-          fi
 
       - name: Build firmware
+        shell: bash
         run: |
+          set -o pipefail
           make -j$(nproc) V=s 2>&1 | tee build.log
-          EXIT_CODE=${PIPESTATUS[0]}
-          if [ $EXIT_CODE -ne 0 ]; then
-            echo "Build failed with exit code $EXIT_CODE"
-            exit $EXIT_CODE
-          fi
 
       - name: Upload firmware
         uses: actions/upload-artifact@v7

@@ -2,7 +2,7 @@ name: ramips-r4a
 
 on:
   schedule:
-    - cron: '0 0 1 * *'
+    - cron: '0 2 1 * *'  # R4A at 02:00 UTC
   workflow_dispatch:
 
 jobs:

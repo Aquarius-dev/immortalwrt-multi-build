@@ -31,6 +31,16 @@ jobs:
 
       - name: Generate release notes
         run: |
+          DEVICES_AVAILABLE=""
+          if ls artifacts/*/immortalwrt-*-r2s-*.bin >/dev/null 2>&1; then
+            DEVICES_AVAILABLE="${DEVICES_AVAILABLE}| NanoPi R2S | 192.168.123.2 | Full build |\n"
+          fi
+          if ls artifacts/*/immortalwrt-*-xiaomi-r4a-*.bin >/dev/null 2>&1; then
+            DEVICES_AVAILABLE="${DEVICES_AVAILABLE}| Xiaomi R4A | 192.168.123.6 | Minimal, no DHCP |\n"
+          fi
+          if ls artifacts/*/immortalwrt-*-phicomm-k2p-*.bin >/dev/null 2>&1; then
+            DEVICES_AVAILABLE="${DEVICES_AVAILABLE}| Phicomm K2P | 192.168.123.5 | Minimal, no DHCP |\n"
+          fi
           cat > notes.md << EOF
           ## ImmortalWrt Firmware Build
 
@@ -38,15 +48,12 @@ jobs:
           |---------|-------|
           | Time | $(date -u '+%Y-%m-%d %H:%M UTC') |
           | Commit | \`${{ github.sha }}\` |
-          | Branch | \`${{ github.ref_name }}\` |
 
           ### Devices
 
           | Device | LAN IP | Notes |
           |--------|--------|-------|
-          | NanoPi R2S | 192.168.123.2 | Full build |
-          | Xiaomi R4A | 192.168.123.6 | Minimal, no DHCP |
-          | Phicomm K2P | 192.168.123.5 | Minimal, no DHCP |
+          ${DEVICES_AVAILABLE}| | | |
           EOF
 
       - name: Create or update release
@@ -77,15 +84,22 @@ jobs:
       - name: Cleanup old releases (keep last 3)
         env:
           GH_TOKEN: ${{ github.token }}
+        shell: bash
         run: |
-          OLD_TAGS=$(gh release list --json tagName --jq '.[].tagName' --limit 100 \
-            | tail -n +4 || true)
+          set -euo pipefail
+          ALL_TAGS=$(gh release list --json tagName --jq '.[].tagName' --limit 100 --order asc || true)
+          if [ -z "$ALL_TAGS" ]; then
+            echo "No releases to clean"
+            exit 0
+          fi
+          OLD_TAGS=$(echo "$ALL_TAGS" | head -n -3)
           if [ -z "$OLD_TAGS" ]; then
-            echo "No old releases to clean"
+            echo "Less than 4 releases exist, nothing to clean"
           else
             echo "$OLD_TAGS" | while read tag; do
+              [ -z "$tag" ] && continue
               echo "Deleting: $tag"
-              gh release delete "$tag" --yes
+              gh release delete "$tag" --yes 2>/dev/null || true
               gh api -X DELETE "repos/${{ github.repository }}/git/refs/tags/$tag" 2>/dev/null || true
             done
           fi

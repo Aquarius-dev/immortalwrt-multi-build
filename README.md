@@ -16,7 +16,7 @@
 | 📡 **Xiaomi Mi Router 4A Gigabit** | `ramips/mt7621` | MIPS | `192.168.123.6` |
 | 🗿 **Phicomm K2P** | `ramips/mt7621` | MIPS | `192.168.123.5` |
 
-> ℹ️ R4A 和 K2P 为最小化构建，已移除 DHCP、IPv6、USB、PPP 等非必要组件。
+> ℹ️ R4A 和 K2P 为最小化构建，已移除 DHCP、IPv6、USB、PPP 等非必要组件。R4A 额外应用了 DTS 分区布局补丁以兼容 BREED 直刷。
 
 ---
 
@@ -24,7 +24,7 @@
 
 | 方式 | 说明 |
 |------|------|
-| 📅 **定时构建** | 每月 **1 号 00:00** 自动触发 |
+| 📅 **定时构建** | 每月 **1 号** 自动触发（00:00 R2S / 02:00 R4A / 04:00 K2P） |
 | 👆 **手动构建** | 进入 **Actions** → **Build ImmortalWrt Firmware** → **Run workflow** |
 | ⏱ **耗时** | 约 **2~5 小时**（完整源码编译） |
 | 📥 **下载** | 构建完成后进入对应 Run → **Artifacts** 或 **Releases** |
@@ -35,15 +35,16 @@
 
 ## 🛠️ 自定义配置
 
-### 📄 方式一：编辑 config 文件（推荐）
+### 编辑 config 文件（推荐）
 
 每个设备对应一个配置文件，直接修改后推送即可：
 
 ```
 config/
-├── r2s.config              # R2S 附加软件包
-├── xiaomi-r4a.config       # Xiaomi R4A 附加软件包
-└── phicomm-k2p.config      # K2P 附加软件包
+├── extra.config            # R2S 全局配置
+├── rockchip.config         # R2S 平台配置
+├── xiaomi-r4a.config       # Xiaomi R4A 软件包
+└── phicomm-k2p.config      # K2P 软件包
 ```
 
 示例 — 添加 passwall：
