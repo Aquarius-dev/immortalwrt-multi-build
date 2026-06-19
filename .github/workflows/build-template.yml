@@ -207,6 +207,9 @@ jobs:
             uci set wireless.$IFACE.cipher='${{ inputs.wifi_cipher }}'
             uci set wireless.$IFACE.disabled='0'
             uci set wireless.$IFACE.network='lan'
+            uci set wireless.$IFACE.ieee80211k='1'
+            uci set wireless.$IFACE.ieee80211v='1'
+            uci set wireless.$IFACE.ieee80211r='1'
             uci commit wireless
           fi
           exit 0

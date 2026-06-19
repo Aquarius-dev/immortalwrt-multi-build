@@ -7,7 +7,7 @@ WIFI_CIPHER="ccmp"
 
 echo "=== Checking required packages ==="
 NEED_INSTALL=""
-for pkg in wpad-basic iw; do
+for pkg in wpad-openssl iw; do
   if ! opkg list-installed 2>/dev/null | grep -q "^$pkg "; then
     NEED_INSTALL="$NEED_INSTALL $pkg"
   fi
@@ -70,6 +70,9 @@ uci set wireless.$IFACE.key="$WIFI_KEY"
 uci set wireless.$IFACE.cipher="$WIFI_CIPHER"
 uci set wireless.$IFACE.disabled='0'
 uci set wireless.$IFACE.network='lan'
+uci set wireless.$IFACE.ieee80211k='1'
+uci set wireless.$IFACE.ieee80211v='1'
+uci set wireless.$IFACE.ieee80211r='1'
 
 uci commit wireless
 wifi reload
