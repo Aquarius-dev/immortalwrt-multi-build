@@ -210,6 +210,9 @@ jobs:
             uci set wireless.$IFACE.ieee80211k='1'
             uci set wireless.$IFACE.ieee80211v='1'
             uci set wireless.$IFACE.ieee80211r='1'
+            uci set wireless.$IFACE.mobility_domain='0x1221'
+            uci set wireless.$IFACE.reassociation_deadline='20000'
+            uci set wireless.$IFACE.ft_over_ds='0'
             uci commit wireless
           fi
           exit 0
