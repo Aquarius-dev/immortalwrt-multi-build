@@ -15,3 +15,7 @@ jobs:
       profile: phicomm_k2p
       lan_ip: 192.168.123.5
       config_method: single-file
+      wifi_ssid: NETGEAR_5G
+      wifi_encryption: psk2
+      wifi_key: "13882020269"
+      wifi_cipher: ccmp
