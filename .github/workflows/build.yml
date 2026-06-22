@@ -1,0 +1,281 @@
+name: Build ImmortalWrt Firmware
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 0 1 * *'
+
+env:
+  REPO_BRANCH: master
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - name: r2s
+            target: rockchip
+            subtarget: armv8
+            profile: friendlyarm_nanopi_r2s
+            lan_ip: 192.168.123.2
+
+          - name: xiaomi-r4a
+            target: ramips
+            subtarget: mt7621
+            profile: xiaomi_mi-router-4a-gigabit
+            lan_ip: 192.168.123.6
+
+          - name: phicomm-k2p
+            target: ramips
+            subtarget: mt7621
+            profile: phicomm_k2p
+            lan_ip: 192.168.123.5
+
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Maximize build space
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost
+          sudo docker image prune -af
+          df -h
+
+      - uses: actions/checkout@v4
+        with:
+          path: repo-config
+
+      - uses: actions/checkout@v4
+        with:
+          repository: immortalwrt/immortalwrt
+          ref: ${{ env.REPO_BRANCH }}
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential ccache clang flex bison g++ gawk \
+            gcc-multilib g++-multilib gettext git git-lfs libncurses-dev libssl-dev \
+            libelf-dev python3 python3-pip python3-setuptools python3-dev rsync unzip \
+            zlib1g-dev file wget qemu-utils upx-ucl autoconf automake libtool libtool-bin \
+            libtool-doc curl
+          sudo locale-gen en_US.UTF-8
+          sudo pip3 install pyelftools
+
+      - name: Configure ccache
+        run: |
+          mkdir -p .ccache
+          echo "cache_dir=$(pwd)/.ccache" > .ccache/ccache.conf
+          echo "max_size=2G" >> .ccache/ccache.conf
+          echo "CCACHE_DIR=$(pwd)/.ccache" >> $GITHUB_ENV
+          echo "CCACHE_COMPRESS=1" >> $GITHUB_ENV
+          echo "CCACHE_COMPRESSLEVEL=3" >> $GITHUB_ENV
+          echo "/usr/lib/ccache" >> $GITHUB_PATH
+
+      - name: Cache downloads
+        uses: actions/cache@v4
+        with:
+          path: dl
+          key: immortalwrt-${{ env.REPO_BRANCH }}-dl
+
+      - name: Cache ccache
+        uses: actions/cache@v4
+        with:
+          path: .ccache
+          key: ccache-${{ matrix.name }}
+
+      - name: Add custom feeds
+        run: |
+          cat >> feeds.conf.default << 'EOF'
+          src-git kenzo https://github.com/kenzok8/openwrt-packages
+          src-git small https://github.com/kenzok8/small
+          EOF
+
+      - name: Update feeds
+        run: |
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
+
+      - name: Configure firmware
+        run: |
+          echo "CONFIG_TARGET_${{ matrix.target }}=y" > .config
+          echo "CONFIG_TARGET_${{ matrix.target }}_${{ matrix.subtarget }}=y" >> .config
+          make defconfig
+          echo "CONFIG_TARGET_${{ matrix.target }}_${{ matrix.subtarget }}_DEVICE_${{ matrix.profile }}=y" >> .config
+          echo "CONFIG_CCACHE=y" >> .config
+          make defconfig
+
+          # Overlay custom config from repo
+          CUSTOM_CONFIG="../repo-config/config/${{ matrix.name }}.config"
+          if [ -f "$CUSTOM_CONFIG" ]; then
+            echo ">>> Overlaying custom config: $CUSTOM_CONFIG"
+            cat "$CUSTOM_CONFIG" >> .config
+            make defconfig
+          fi
+
+          # Add openclash for R2S
+          if [ "${{ matrix.name }}" = "r2s" ]; then
+            echo ">>> Adding luci-app-openclash for R2S"
+            echo "CONFIG_PACKAGE_luci-app-openclash=y" >> .config
+            make defconfig
+          fi
+
+          # Minimization for R4A/K2P (remove packages after defconfig to prevent re-add)
+          if [ "${{ matrix.name }}" = "xiaomi-r4a" ] || [ "${{ matrix.name }}" = "phicomm-k2p" ]; then
+            echo ">>> Minimizing build for ${{ matrix.name }}"
+            for pkg in dnsmasq odhcpd odhcpd-ipv6only; do
+              sed -i "s/CONFIG_PACKAGE_${pkg}=y/# CONFIG_PACKAGE_${pkg} is not set/" .config
+            done
+            sed -i 's/CONFIG_IPV6=y/CONFIG_IPV6=n/' .config
+            grep -q 'CONFIG_IPV6' .config || echo "CONFIG_IPV6=n" >> .config
+            for m in kmod-usb-core kmod-usb-ohci kmod-usb-uhci kmod-usb2; do
+              sed -i "s/CONFIG_PACKAGE_${m}=y/# CONFIG_PACKAGE_${m} is not set/" .config
+            done
+            for p in ppp ppp-mod-pppoe; do
+              sed -i "s/CONFIG_PACKAGE_${p}=y/# CONFIG_PACKAGE_${p} is not set/" .config
+            done
+            echo ">>> After minimization:"
+            grep -E 'dnsmasq|odhcpd|IPV6|kmod-usb|ppp' .config || true
+          fi
+
+      - name: Customize system config
+        run: |
+          mkdir -p files/etc/uci-defaults
+          cat > files/etc/uci-defaults/99-custom-config << 'EOF'
+          #!/bin/sh
+          uci set network.lan.ipaddr='${{ matrix.lan_ip }}'
+          uci set luci.main.mediaurlbase='/luci-static/material'
+          uci set system.@system[0].timezone='CST-8'
+          uci set system.@system[0].zonename='Asia/Shanghai'
+          uci commit
+          exit 0
+          EOF
+          chmod +x files/etc/uci-defaults/99-custom-config
+
+      - name: Customize banner
+        run: |
+          mkdir -p files/etc
+          cat > files/etc/banner << EOF
+          ╔══════════════════════════════════════════════╗
+          ║       🏗️ ImmortalWrt Custom Build           ║
+          ╠══════════════════════════════════════════════╣
+          ║  Device   : ${{ matrix.name }}
+          ║  Target   : ${{ matrix.target }}/${{ matrix.subtarget }}
+          ║  LAN IP   : ${{ matrix.lan_ip }}
+          ╠══════════════════════════════════════════════╣
+          ║  Source   : immortalwrt/immortalwrt (master)
+          ║  Commit   : $(git rev-parse --short HEAD)
+          ║  Build    : $(date -u '+%Y-%m-%d %H:%M UTC')
+          ╚══════════════════════════════════════════════╝
+          EOF
+
+      - name: Download source packages
+        run: |
+          make download -j8 V=s 2>&1 | tee download.log
+          [ -d dl ] && find dl -size -1024c -exec ls -l {} \;
+
+      - name: Build firmware
+        run: |
+          make -j$(nproc) V=s 2>&1 | tee build.log
+
+      - name: Check build output
+        run: |
+          echo ">>> bin/targets content:"
+          find bin/targets -type f 2>/dev/null || echo "bin/targets not found"
+          echo ">>> Exit code of build: $?"
+
+      - name: Upload firmware
+        uses: actions/upload-artifact@v4
+        with:
+          name: immortalwrt-${{ matrix.name }}-${{ github.sha }}
+          path: |
+            bin/targets/**/*
+            !bin/targets/**/*.buildinfo
+            !bin/targets/**/packages/**
+
+      - name: Upload logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log-${{ matrix.name }}
+          path: |
+            build.log
+            download.log
+
+  release:
+    if: success()
+    needs: build
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Generate release notes
+        run: |
+          cat > notes.md << EOF
+          ## 🏗️ ImmortalWrt 最新源码固件自动构建
+
+          ### 📋 构建信息
+          | 项目 | 值 |
+          |------|-----|
+          | 🕐 时间 | $(date -u '+%Y-%m-%d %H:%M UTC') |
+          | 🔗 Commit | \`${{ github.sha }}\` |
+          | 🌿 分支 | \`${{ github.ref_name }}\` |
+
+          ### 📦 包含设备
+
+          | 设备 | 平台 | LAN IP | 备注 |
+          |------|------|--------|------|
+          | 🖥️ **NanoPi R2S** | \`rockchip/armv8\` | \`192.168.123.2\` | 完整构建 |
+          | 📡 **Xiaomi Mi Router 4A Gigabit** | \`ramips/mt7621\` | \`192.168.123.6\` | ⚡最小化, 无 DHCP |
+          | 🗿 **Phicomm K2P** | \`ramips/mt7621\` | \`192.168.123.5\` | ⚡最小化, 无 DHCP |
+
+          ### ⚙️ 定制说明
+          - 🔧 **R4A & K2P** 为最小化构建，已移除 **DHCP/DNS (dnsmasq)**、**IPv6**、**USB 模块**、**PPP**
+          - 📍 各设备 LAN IP 已预设（见上表），刷机后即可通过该 IP 访问路由器
+          - ⚠️ 由于 DHCP 已被移除，请确保上级路由或局域网内有其他 DHCP 服务器，否则需要手动配置静态 IP
+
+          ### ⬇️ 刷机说明
+          - **R2S**: 使用 \`*sdcard*\` 或 \`*sysupgrade*\` 镜像写入 TF 卡
+          - **R4A / K2P**: 使用 \`*sysupgrade*\` 在 Web 界面升级，或 \`*factory*\` 在 breed 中刷入
+          EOF
+
+      - name: Create Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="build-$(date +'%Y%m%d-%H%M%S')"
+          echo "Creating release tag: $TAG"
+
+          FIRMWARE_FILES=$(find artifacts -type f \( -name "*.bin" -o -name "*.gz" -o -name "*.img" \) \
+            -not -path "*/packages/*" 2>/dev/null || true)
+
+          if [ -z "$FIRMWARE_FILES" ]; then
+            echo "No firmware files found, skipping release"
+            exit 1
+          fi
+
+          gh release create "$TAG" \
+            $FIRMWARE_FILES \
+            -F notes.md \
+            --title "🏗️ ImmortalWrt 固件 $(date '+%Y-%m-%d')" \
+            --target "${{ github.sha }}"
+
+      - name: Cleanup old releases (keep last 3)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          OLD_TAGS=$(gh release list --json tagName --jq '.[].tagName' --limit 100 \
+            | tail -n +4 || true)
+          if [ -z "$OLD_TAGS" ]; then
+            echo "No old releases to clean"
+          else
+            echo ">>> Cleaning old releases:"
+            echo "$OLD_TAGS" | while read tag; do
+              echo "  Deleting: $tag"
+              gh release delete "$tag" --yes
+              git push --delete origin "$tag" 2>/dev/null || true
+            done
+          fi
