@@ -1,54 +1,67 @@
+# ============================================================
+# ImmortalWrt 固件自动构建工作流
+# 支持设备: R2S / Xiaomi R4A / Phicomm K2P
+# ============================================================
+
 name: Build ImmortalWrt Firmware
 
+# 触发方式
 on:
-  workflow_dispatch:
+  workflow_dispatch:      # 手动触发
   schedule:
-    - cron: '0 0 1 * *'
+    - cron: '0 0 1 * *'  # 每月 1 号零点自动构建
 
 env:
-  REPO_BRANCH: master
+  REPO_BRANCH: master     # ImmortalWrt 源码分支
 
 jobs:
   build:
     strategy:
       matrix:
         include:
+          # ---------- 设备: R2S ----------
           - name: r2s
             target: rockchip
             subtarget: armv8
             profile: friendlyarm_nanopi_r2s
             lan_ip: 192.168.123.2
 
+          # ---------- 设备: Xiaomi R4A ----------
           - name: xiaomi-r4a
             target: ramips
             subtarget: mt7621
             profile: xiaomi_mi-router-4a-gigabit
             lan_ip: 192.168.123.6
 
+          # ---------- 设备: Phicomm K2P ----------
           - name: phicomm-k2p
             target: ramips
             subtarget: mt7621
             profile: phicomm_k2p
             lan_ip: 192.168.123.5
 
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
 
     steps:
+      # ---- 释放磁盘空间 ----
       - name: Maximize build space
         run: |
           sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost
           sudo docker image prune -af
           df -h
 
-      - uses: actions/checkout@v4
-        with:
-          path: repo-config
-
-      - uses: actions/checkout@v4
+      # ---- 检出 ImmortalWrt 源码到工作目录 ----
+      - uses: actions/checkout@v6
         with:
           repository: immortalwrt/immortalwrt
           ref: ${{ env.REPO_BRANCH }}
 
+      # ---- 检出你的配置仓库（config 文件、自定义脚本等） ----
+      - uses: actions/checkout@v6
+        with:
+          path: repo-config
+
+      # ---- 安装编译依赖 ----
       - name: Install build dependencies
         run: |
           sudo apt-get update
@@ -60,6 +73,7 @@ jobs:
           sudo locale-gen en_US.UTF-8
           sudo pip3 install pyelftools
 
+      # ---- 配置 ccache（加速重复编译） ----
       - name: Configure ccache
         run: |
           mkdir -p .ccache
@@ -70,18 +84,25 @@ jobs:
           echo "CCACHE_COMPRESSLEVEL=3" >> $GITHUB_ENV
           echo "/usr/lib/ccache" >> $GITHUB_PATH
 
+      # ---- 缓存下载的源码包（跨运行复用） ----
       - name: Cache downloads
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: dl
-          key: immortalwrt-${{ env.REPO_BRANCH }}-dl
+          key: immortalwrt-${{ env.REPO_BRANCH }}-${{ matrix.name }}-dl
+          restore-keys: |
+            immortalwrt-${{ env.REPO_BRANCH }}-dl
 
+      # ---- 缓存编译器输出（按设备独立缓存） ----
       - name: Cache ccache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: .ccache
           key: ccache-${{ matrix.name }}
+          restore-keys: |
+            ccache-
 
+      # ---- 添加第三方软件源（kenzok8 的 passwall 等） ----
       - name: Add custom feeds
         run: |
           cat >> feeds.conf.default << 'EOF'
@@ -89,13 +110,16 @@ jobs:
           src-git small https://github.com/kenzok8/small
           EOF
 
+      # ---- 更新并安装 feeds 软件包 ----
       - name: Update feeds
         run: |
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
+      # ---- 配置编译选项 ----
       - name: Configure firmware
         run: |
+          # 1. 设置目标平台和设备
           echo "CONFIG_TARGET_${{ matrix.target }}=y" > .config
           echo "CONFIG_TARGET_${{ matrix.target }}_${{ matrix.subtarget }}=y" >> .config
           make defconfig
@@ -103,7 +127,7 @@ jobs:
           echo "CONFIG_CCACHE=y" >> .config
           make defconfig
 
-          # Overlay custom config from repo
+          # 2. 叠加你的自定义配置（config/<设备>.config）
           CUSTOM_CONFIG="../repo-config/config/${{ matrix.name }}.config"
           if [ -f "$CUSTOM_CONFIG" ]; then
             echo ">>> Overlaying custom config: $CUSTOM_CONFIG"
@@ -111,14 +135,14 @@ jobs:
             make defconfig
           fi
 
-          # Add openclash for R2S
+          # 3. R2S 额外添加 OpenClash
           if [ "${{ matrix.name }}" = "r2s" ]; then
             echo ">>> Adding luci-app-openclash for R2S"
             echo "CONFIG_PACKAGE_luci-app-openclash=y" >> .config
             make defconfig
           fi
 
-          # Minimization for R4A/K2P (remove packages after defconfig to prevent re-add)
+          # 4. R4A / K2P 最小化（去掉 DHCP、IPv6、USB、PPP）
           if [ "${{ matrix.name }}" = "xiaomi-r4a" ] || [ "${{ matrix.name }}" = "phicomm-k2p" ]; then
             echo ">>> Minimizing build for ${{ matrix.name }}"
             for pkg in dnsmasq odhcpd odhcpd-ipv6only; do
@@ -136,6 +160,7 @@ jobs:
             grep -E 'dnsmasq|odhcpd|IPV6|kmod-usb|ppp' .config || true
           fi
 
+      # ---- 写入系统预设（IP、主题、时区） ----
       - name: Customize system config
         run: |
           mkdir -p files/etc/uci-defaults
@@ -150,6 +175,7 @@ jobs:
           EOF
           chmod +x files/etc/uci-defaults/99-custom-config
 
+      # ---- 写入 SSH 登录欢迎信息 ----
       - name: Customize banner
         run: |
           mkdir -p files/etc
@@ -167,23 +193,24 @@ jobs:
           ╚══════════════════════════════════════════════╝
           EOF
 
+      # ---- 预下载源码包 ----
       - name: Download source packages
         run: |
           make download -j8 V=s 2>&1 | tee download.log
-          [ -d dl ] && find dl -size -1024c -exec ls -l {} \;
 
+      # ---- 编译固件 ----
       - name: Build firmware
         run: |
           make -j$(nproc) V=s 2>&1 | tee build.log
+          EXIT_CODE=${PIPESTATUS[0]}
+          if [ $EXIT_CODE -ne 0 ]; then
+            echo "❌ Build failed with exit code $EXIT_CODE"
+            exit $EXIT_CODE
+          fi
 
-      - name: Check build output
-        run: |
-          echo ">>> bin/targets content:"
-          find bin/targets -type f 2>/dev/null || echo "bin/targets not found"
-          echo ">>> Exit code of build: $?"
-
+      # ---- 上传固件到 Actions Artifacts ----
       - name: Upload firmware
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: immortalwrt-${{ matrix.name }}-${{ github.sha }}
           path: |
@@ -191,27 +218,34 @@ jobs:
             !bin/targets/**/*.buildinfo
             !bin/targets/**/packages/**
 
+      # ---- 编译失败时上传日志 ----
       - name: Upload logs on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: build-log-${{ matrix.name }}
           path: |
             build.log
             download.log
 
+  # ============================================================
+  # Release 发布任务（依赖所有 build 任务成功）
+  # ============================================================
   release:
     if: success()
     needs: build
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     permissions:
-      contents: write
+      contents: write           # 需要写入 Releases 的权限
 
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v6
+
+      - uses: actions/download-artifact@v8
         with:
           path: artifacts
 
+      # ---- 生成 Release 说明 ----
       - name: Generate release notes
         run: |
           cat > notes.md << EOF
@@ -242,6 +276,7 @@ jobs:
           - **R4A / K2P**: 使用 \`*sysupgrade*\` 在 Web 界面升级，或 \`*factory*\` 在 breed 中刷入
           EOF
 
+      # ---- 创建 GitHub Release ----
       - name: Create Release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -253,7 +288,8 @@ jobs:
             -not -path "*/packages/*" 2>/dev/null || true)
 
           if [ -z "$FIRMWARE_FILES" ]; then
-            echo "No firmware files found, skipping release"
+            echo "⚠️ No firmware files found in artifacts"
+            ls -laR artifacts/
             exit 1
           fi
 
@@ -263,6 +299,7 @@ jobs:
             --title "🏗️ ImmortalWrt 固件 $(date '+%Y-%m-%d')" \
             --target "${{ github.sha }}"
 
+      # ---- 清理旧 Release（只保留最近 3 个） ----
       - name: Cleanup old releases (keep last 3)
         env:
           GH_TOKEN: ${{ github.token }}
@@ -276,6 +313,6 @@ jobs:
             echo "$OLD_TAGS" | while read tag; do
               echo "  Deleting: $tag"
               gh release delete "$tag" --yes
-              git push --delete origin "$tag" 2>/dev/null || true
+              gh api -X DELETE "repos/${{ github.repository }}/git/refs/tags/$tag" 2>/dev/null || true
             done
           fi
