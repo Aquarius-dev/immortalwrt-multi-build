@@ -1,1 +1,13 @@
 opencode.json
+bin/
+dl/
+.ccache/
+.config
+.buildlog/
+build.log
+download.log
+files/
+*.swp
+*.swo
+*~
+.DS_Store

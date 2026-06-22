@@ -1,206 +1,90 @@
-## 🔧 Xiaomi R4A BREED 直刷问题修复指南
+## Xiaomi R4A BREED 直刷问题修复指南
 
-### 📋 问题描述
+### 问题描述
 
-Xiaomi Mi Router 4A Gigabit 使用 BREED bootloader，直刷固件时常出现以下问题：
-- ❌ BREED 无法识别固件
-- ❌ 固件校验失败
-- ❌ 无法进入启动菜单
-- ❌ 网页上传失败
+Xiaomi Mi Router 4A Gigabit 使用 BREED bootloader 直刷固件时，ImmortalWrt 上游固件会出现无限重启。原因是上游的分区布局引入了额外分区（Bdata、crash、cfg_bak、overlay），将 firmware 分区偏移推到了 `0x180000`，而 BREED 内部的分区表预期 firmware 在 `0x50000`。
 
-### ✅ 解决方案
+### 解决方案
 
 #### 核心原因
-Xiaomi R4A 的 BREED bootloader 期望特定的镜像格式：
-1. **必须是 uImage 格式**（不是 squashfs）
-2. **镜像头必须正确**
-3. **分区大小必须合理**
 
-#### 配置修复
-已在 `config/xiaomi-r4a.config` 中添加以下关键配置：
+BREED 内部固化分区表：
+| 分区 | 偏移 | 大小 |
+|------|------|------|
+| u-boot | 0x000000 | 0x30000 |
+| u-boot-env | 0x030000 | 0x10000 |
+| factory | 0x040000 | 0x10000 |
+| **firmware** | **0x050000** | **0xfb0000** |
 
-```bash
-# 启用 uImage 生成（BREED 必需）
-CONFIG_TARGET_ROOTFS_UIMAGE=y
+上游 ImmortalWrt 分区表：
+| 分区 | 偏移 | 大小 |
+|------|------|------|
+| u-boot | 0x000000 | 0x30000 |
+| u-boot-env | 0x030000 | 0x10000 |
+| Bdata | 0x040000 | 0x10000 |
+| factory | 0x050000 | 0x10000 |
+| crash | 0x060000 | 0x10000 |
+| cfg_bak | 0x070000 | 0x10000 |
+| overlay | 0x080000 | 0x100000 |
+| **firmware** | **0x180000** | **0xe80000** |
 
-# 启用 Initramfs（内存启动）
-CONFIG_TARGET_ROOTFS_INITRAMFS=y
+当 BREED 将固件写入 `0x050000`，但内核从 `0x180000` 读取时，启动失败。
 
-# SquashFS 压缩（减小镜像）
-CONFIG_TARGET_ROOTFS_SQUASHFS=y
+#### 修复方式（补丁方案）
 
-# 256MB 根分区
-CONFIG_TARGET_ROOTFS_PARTSIZE=256
+本项目通过 **DTS 补丁** 修复此问题，修改 `mt7621_xiaomi_mi-router-4a-common.dtsi`：
 
-# GZIP 压缩（最佳兼容性）
-CONFIG_TARGET_IMAGES_GZIP=y
-```
+- 删除 `Bdata`、`crash`、`cfg_bak`、`overlay` 分区
+- `factory` 分区合并到 `partition@40000`
+- `firmware` 分区改为 `0x50000` 起始，大小 `0xfb0000` (16064k)
 
-### 🚀 刷机步骤
+补丁位于 `patches/ramips/0001-*partition*.patch`，构建 R4A 时自动应用。
 
-#### 方法 1: BREED 网页上传（推荐）
+### 刷机步骤
+
+#### BREED 网页上传（推荐）
 
 1. **进入 BREED**
-   ```
-   路由器断电，按住 Reset 按钮
-   通电不放（持续 5-10 秒）
-   看到指示灯快闪 → 释放按钮
-   ```
+   - 路由器断电，按住 Reset 按钮
+   - 通电不放（持续 5-10 秒）
+   - 看到指示灯快闪 -> 释放按钮
 
 2. **连接 BREED**
-   ```
-   浏览器访问: http://192.168.1.1
-   或: http://breed.tool.local
-   ```
+   - 浏览器访问 `http://192.168.1.1`
 
 3. **上传固件**
    - 进入"固件更新"
-   - 选择编译出的 `.bin` 文件
+   - 选择编译出的 `squashfs-sysupgrade.bin` 文件
    - 勾选"不检查固件版本"
    - 点击"升级"
 
 4. **等待完成**
-   ```
-   不要断电！等待指示灯停止闪烁
-   大约 2-5 分钟
-   ```
+   - 不要断电，等待指示灯停止闪烁（约 2-5 分钟）
 
-#### 方法 2: BREED 命令行刷机
+### 固件文件说明
 
-```bash
-# 1. 找到固件文件
-ls -lh immortalwrt-xiaomi-r4a-*-squashfs-kernel1.bin
+编译完成后，主要使用 `squashfs-sysupgrade.bin` 文件（完整固件，包含内核和文件系统）。
 
-# 2. 使用 uimage 格式文件
-# BREED 接受的格式：
-# - squashfs-kernel1.bin (uImage)
-# - squashfs-rootfs1.bin (root)
+### 验证补丁是否生效
 
-# 3. 使用 BREED 自带上传
-# 在网页中直接上传，自动分离内核和文件系统
-```
-
-#### 方法 3: 恢复出厂固件
-
-如果刷坏，使用 BREED 恢复：
-
-```bash
-# 在 BREED 网页选择"固件下载"
-# 输入您设备的型号
-# 下载官方固件后上传恢复
-```
-
-### 📦 固件文件说明
-
-编译完成后会生成以下文件：
+构建日志中可检查：
 
 ```
-bin/targets/ramips/mt7621/
-├── immortalwrt-ramips-mt7621-xiaomi_mi_router_4a_gigabit-squashfs-kernel1.bin
-│   └── 这是 KERNEL 分区镜像（BREED 使用）
-├── immortalwrt-ramips-mt7621-xiaomi_mi_router_4a_gigabit-squashfs-rootfs1.bin
-│   └── 这是 ROOTFS 分区镜像（BREED 使用）
-└── immortalwrt-ramips-mt7621-xiaomi_mi_router_4a_gigabit-squashfs.trx
-    └── 完整镜像（某些刷机工具使用）
+[APPLY] patches/ramips/0001-ramips-mt7621-xiaomi-r4a-breed-compatible-partitions.patch
 ```
 
-**BREED 直刷请使用：**
-```
-✅ squashfs-kernel1.bin (在 BREED 网页上传)
-✅ 或者完整的 .bin 文件
-❌ 不要使用 .trx 格式
-```
-
-### ⚠️ 常见问题
-
-#### Q: 上传后一直卡住
-```
-A: 原因：文件过大或网络不稳定
-   解决：
-   1. 重启 BREED（断电重启）
-   2. 使用不同的网络（有线网）
-   3. 使用浏览器无痕窗口
-   4. 清除浏览器缓存
-```
-
-#### Q: 固件校验失败
-```
-A: 原因：固件格式不匹配
-   解决：
-   1. 确保下载的是 kernel1.bin 或完整 .bin
-   2. 勾选"不检查固件版本"
-   3. 尝试其他镜像格式
-```
-
-#### Q: 无法进入网页
-```
-A: 原因：BREED 未正确启动
-   解决：
-   1. 检查网线连接
-   2. 尝试 192.168.1.1
-   3. 重新进入 BREED 模式
-   4. 使用有线网（不用 WiFi）
-```
+### 常见问题
 
 #### Q: 刷机后无法启动
-```
-A: 原因：内核/文件系统分区错误
-   解决：
-   1. 重新进入 BREED
-   2. 使用"固件下载"恢复出厂
-   3. 重新刷入新固件
-```
+- 重新进入 BREED
+- 刷回官方固件恢复
+- 重新刷入新固件
 
-### 🔍 BREED 版本检查
+#### Q: BREED 无法识别固件
+- 确保使用的是 `.bin` 文件
+- 勾选"不检查固件版本"
 
-```
-如何查看 BREED 版本：
-1. 进入 BREED 网页
-2. 点击"系统设置"
-3. 查看 BREED 版本号
-4. 确保版本较新（推荐 v1.0 及以上）
-```
-
-### 📝 刷机前检查清单
-
-- [ ] 已备份原固件
-- [ ] 网络稳定（使用有线）
-- [ ] 路由器电量充足
-- [ ] 下载了正确的 kernel1.bin 文件
-- [ ] 浏览器缓存已清除
-- [ ] 电脑和路由器通电不断开
-
-### 🆘 仍然无法刷入？
-
-1. **检查固件完整性**
-   ```bash
-   # 验证下载的文件
-   md5sum immortalwrt-xiaomi-r4a-*.bin
-   # 与 GitHub Release 对比
-   ```
-
-2. **使用 BREED 的"分区编辑"**
-   ```
-   如果网页上传失败：
-   1. 进入"分区编辑"
-   2. 手动编辑分区表
-   3. 确保分区大小正确
-   ```
-
-3. **恢复到原厂固件后重试**
-   ```
-   1. 使用"固件下载"恢复官方固件
-   2. 重启路由器
-   3. 重新进入 BREED
-   4. 再次尝试刷入
-   ```
-
-### 📚 相关资源
+### 相关资源
 
 - [BREED 官方文档](https://www.right.com.cn/forum/thread-4030501-1-1.html)
-- [Xiaomi R4A 刷机教程](https://www.right.com.cn/forum/thread-3936872-1-1.html)
-- [ImmortalWrt 官网](https://immortalwrt.org)
-
----
-
-**如果问题仍未解决，请在 GitHub Issues 中提交详细日志！**
+- 参考实现: [Plutonium141/XiaoMi-R4A-Gigabit-Actions-OpenWrt](https://github.com/Plutonium141/XiaoMi-R4A-Gigabit-Actions-OpenWrt)
