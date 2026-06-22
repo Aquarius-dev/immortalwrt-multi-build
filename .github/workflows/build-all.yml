@@ -1,0 +1,46 @@
+name: Build All Devices
+
+on:
+  schedule:
+    - cron: '0 0 1 * *'  # 每月1号00:00 UTC触发，三设备并行构建
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - device_name: r2s
+            target: rockchip
+            subtarget: armv8
+            profile: friendlyarm_nanopi_r2s
+            lan_ip: 192.168.123.2
+            config_method: multi-file
+            timeout_minutes: 420
+
+          - device_name: xiaomi-r4a
+            target: ramips
+            subtarget: mt7621
+            profile: xiaomi_mi-router-4a-gigabit
+            lan_ip: 192.168.123.6
+            config_method: single-file
+            timeout_minutes: 180
+
+          - device_name: phicomm-k2p
+            target: ramips
+            subtarget: mt7621
+            profile: phicomm_k2p
+            lan_ip: 192.168.123.5
+            config_method: single-file
+            timeout_minutes: 180
+
+    timeout-minutes: ${{ matrix.timeout_minutes }}
+    uses: ./.github/workflows/build-template.yml
+    with:
+      device_name: ${{ matrix.device_name }}
+      target: ${{ matrix.target }}
+      subtarget: ${{ matrix.subtarget }}
+      profile: ${{ matrix.profile }}
+      lan_ip: ${{ matrix.lan_ip }}
+      config_method: ${{ matrix.config_method }}

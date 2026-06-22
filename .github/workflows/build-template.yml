@@ -21,26 +21,13 @@ on:
       config_method:
         required: true
         type: string
-      wifi_ssid:
-        required: false
-        type: string
-      wifi_encryption:
-        required: false
-        type: string
-        default: "psk2"
-      wifi_key:
-        required: false
-        type: string
-      wifi_cipher:
-        required: false
-        type: string
-        default: "ccmp"
+
 
 jobs:
   build:
     name: ${{ inputs.device_name }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 420
+    timeout-minutes: 420  # caller 可设更短超时，此值作为安全兜底
 
     steps:
       - name: Maximize build space
@@ -64,10 +51,10 @@ jobs:
         if: inputs.device_name == 'xiaomi-r4a'
         run: |
           set -e
-          patch -p1 --dry-run < repo-config/patches/ramips/0001-ramips-mt7621-xiaomi-r4a-breed-compatible-partitions.patch
-          patch -p1 --dry-run < repo-config/patches/ramips/0002-ramips-mt7621-xiaomi-r4a-adjust-image-size.patch
-          patch -p1 < repo-config/patches/ramips/0001-ramips-mt7621-xiaomi-r4a-breed-compatible-partitions.patch
-          patch -p1 < repo-config/patches/ramips/0002-ramips-mt7621-xiaomi-r4a-adjust-image-size.patch
+          for p in repo-config/patches/ramips/*.patch; do
+            echo "Applying patch: $p"
+            patch -p1 --forward < "$p"
+          done
 
       - name: Install build dependencies
         run: |
@@ -103,9 +90,19 @@ jobs:
         uses: actions/cache@v5
         with:
           path: .ccache
-          key: ccache-${{ inputs.device_name }}
+          key: ccache-${{ inputs.target }}-${{ inputs.subtarget }}-${{ inputs.device_name }}
           restore-keys: |
+            ccache-${{ inputs.target }}-${{ inputs.subtarget }}-
             ccache-
+
+      - name: Cache toolchain
+        uses: actions/cache@v5
+        with:
+          path: staging_dir/toolchain-*
+          key: toolchain-${{ inputs.target }}-${{ inputs.subtarget }}-${{ hashFiles('toolchain/**', 'include/**') }}
+          restore-keys: |
+            toolchain-${{ inputs.target }}-${{ inputs.subtarget }}-
+            toolchain-
 
       - name: Add custom feeds
         run: |
@@ -135,29 +132,41 @@ jobs:
             echo "CONFIG_CCACHE=y" >> .config
             make defconfig
           else
-            echo "CONFIG_TARGET_${{ inputs.target }}=y" > .config
-            echo "CONFIG_TARGET_${{ inputs.target }}_${{ inputs.subtarget }}=y" >> .config
-            make defconfig
-            echo "CONFIG_TARGET_${{ inputs.target }}_${{ inputs.subtarget }}_DEVICE_${{ inputs.profile }}=y" >> .config
-            echo "CONFIG_CCACHE=y" >> .config
-            make defconfig
             CUSTOM_CONFIG="repo-config/config/${{ inputs.device_name }}.config"
-            if [ -f "$CUSTOM_CONFIG" ]; then
-              echo ">>> Overlaying custom config: $CUSTOM_CONFIG"
-              cat "$CUSTOM_CONFIG" >> .config
+            if [ -f "$CUSTOM_CONFIG" ] && grep -q "^CONFIG_MODULES=y$" "$CUSTOM_CONFIG"; then
+              echo ">>> Detected full config for ${{ inputs.device_name }}, using directly"
+              cp "$CUSTOM_CONFIG" .config
               make defconfig
+            else
+              echo "CONFIG_TARGET_${{ inputs.target }}=y" > .config
+              echo "CONFIG_TARGET_${{ inputs.target }}_${{ inputs.subtarget }}=y" >> .config
+              make defconfig
+              echo "CONFIG_TARGET_${{ inputs.target }}_${{ inputs.subtarget }}_DEVICE_${{ inputs.profile }}=y" >> .config
+              echo "CONFIG_CCACHE=y" >> .config
+              make defconfig
+              RAMIPS_COMMON="repo-config/config/ramips-common.config"
+              if [ -f "$RAMIPS_COMMON" ]; then
+                echo ">>> Applying ramips-common config: $RAMIPS_COMMON"
+                cat "$RAMIPS_COMMON" >> .config
+                make defconfig
+              fi
+              if [ -f "$CUSTOM_CONFIG" ]; then
+                echo ">>> Overlaying device-specific config: $CUSTOM_CONFIG"
+                cat "$CUSTOM_CONFIG" >> .config
+                make defconfig
+              fi
+              for pkg in dnsmasq odhcpd odhcpd-ipv6only; do
+                sed -i "s/CONFIG_PACKAGE_${pkg}=y/# CONFIG_PACKAGE_${pkg} is not set/" .config
+              done
+              sed -i 's/CONFIG_IPV6=y/CONFIG_IPV6=n/' .config
+              grep -q 'CONFIG_IPV6' .config || echo "CONFIG_IPV6=n" >> .config
+              for m in kmod-usb-core kmod-usb-ohci kmod-usb-uhci kmod-usb2; do
+                sed -i "s/CONFIG_PACKAGE_${m}=y/# CONFIG_PACKAGE_${m} is not set/" .config
+              done
+              for p in ppp ppp-mod-pppoe; do
+                sed -i "s/CONFIG_PACKAGE_${p}=y/# CONFIG_PACKAGE_${p} is not set/" .config
+              done
             fi
-            for pkg in dnsmasq odhcpd odhcpd-ipv6only; do
-              sed -i "s/CONFIG_PACKAGE_${pkg}=y/# CONFIG_PACKAGE_${pkg} is not set/" .config
-            done
-            sed -i 's/CONFIG_IPV6=y/CONFIG_IPV6=n/' .config
-            grep -q 'CONFIG_IPV6' .config || echo "CONFIG_IPV6=n" >> .config
-            for m in kmod-usb-core kmod-usb-ohci kmod-usb-uhci kmod-usb2; do
-              sed -i "s/CONFIG_PACKAGE_${m}=y/# CONFIG_PACKAGE_${m} is not set/" .config
-            done
-            for p in ppp ppp-mod-pppoe; do
-              sed -i "s/CONFIG_PACKAGE_${p}=y/# CONFIG_PACKAGE_${p} is not set/" .config
-            done
           fi
           grep "^CONFIG_TARGET" .config | sort
 
@@ -174,51 +183,6 @@ jobs:
           exit 0
           EOF
           chmod +x files/etc/uci-defaults/99-custom-config
-          if [ "${{ inputs.wifi_ssid }}" != "" ]; then
-            cat > files/etc/uci-defaults/98-wifi-config << 'EOF'
-          #!/bin/sh
-          . /lib/functions.sh
-          RADIO=""
-          for r in $(uci show wireless | grep "wifi-device" | cut -d= -f1 | cut -d. -f2 | sort -u); do
-            _hwmode=$(uci get wireless.$r.hwmode 2>/dev/null)
-            _band=$(uci get wireless.$r.band 2>/dev/null)
-            if [ "$_hwmode" = "11a" ] || [ "$_band" = "5GHz" ]; then
-              RADIO="$r"
-            fi
-          done
-          if [ -n "$RADIO" ]; then
-            uci set wireless.$RADIO.disabled='0'
-            IFACE="default_$RADIO"
-            if ! uci get wireless.$IFACE >/dev/null 2>&1; then
-              IFACE="cfg_$RADIO"
-              if ! uci get wireless.$IFACE >/dev/null 2>&1; then
-                IFACE=""
-              fi
-            fi
-            if [ -z "$IFACE" ]; then
-              IFACE="default_$RADIO"
-              uci set wireless.$IFACE=wifi-iface
-            fi
-            uci set wireless.$IFACE.mode='ap'
-            uci set wireless.$IFACE.device="$RADIO"
-            uci set wireless.$IFACE.ssid='${{ inputs.wifi_ssid }}'
-            uci set wireless.$IFACE.encryption='${{ inputs.wifi_encryption }}'
-            uci set wireless.$IFACE.key='${{ inputs.wifi_key }}'
-            uci set wireless.$IFACE.cipher='${{ inputs.wifi_cipher }}'
-            uci set wireless.$IFACE.disabled='0'
-            uci set wireless.$IFACE.network='lan'
-            uci set wireless.$IFACE.ieee80211k='1'
-            uci set wireless.$IFACE.ieee80211v='1'
-            uci set wireless.$IFACE.ieee80211r='1'
-            uci set wireless.$IFACE.mobility_domain='0x1221'
-            uci set wireless.$IFACE.reassociation_deadline='20000'
-            uci set wireless.$IFACE.ft_over_ds='0'
-            uci commit wireless
-          fi
-          exit 0
-          EOF
-            chmod +x files/etc/uci-defaults/98-wifi-config
-          fi
 
       - name: Customize banner
         run: |
@@ -236,7 +200,16 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          make download -j8 V=s 2>&1 | tee download.log
+          for i in 1 2 3; do
+            make download -j$(nproc) V=s 2>&1 | tee download.log && break
+            if [ $i -lt 3 ]; then
+              echo "Download attempt $i failed, sleeping 30s before retry..."
+              sleep 30
+            fi
+          done
+          if [ ! -f download.log ] || grep -q "ERROR\|make.*Error" download.log 2>/dev/null; then
+            echo "Download failed after 3 attempts" && exit 1
+          fi
 
       - name: Build firmware
         shell: bash

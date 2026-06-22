@@ -1,8 +1,6 @@
 # 🏗️ ImmortalWrt Multi-Build
 
-[![R2S](https://github.com/Aquarius-dev/immortalwrt-multi-build/actions/workflows/rockchip.yml/badge.svg)](https://github.com/Aquarius-dev/immortalwrt-multi-build/actions/workflows/rockchip.yml)
-[![R4A](https://github.com/Aquarius-dev/immortalwrt-multi-build/actions/workflows/ramips-r4a.yml/badge.svg)](https://github.com/Aquarius-dev/immortalwrt-multi-build/actions/workflows/ramips-r4a.yml)
-[![K2P](https://github.com/Aquarius-dev/immortalwrt-multi-build/actions/workflows/ramips-k2p.yml/badge.svg)](https://github.com/Aquarius-dev/immortalwrt-multi-build/actions/workflows/ramips-k2p.yml)
+[![Build](https://github.com/Aquarius-dev/immortalwrt-multi-build/actions/workflows/build-all.yml/badge.svg)](https://github.com/Aquarius-dev/immortalwrt-multi-build/actions/workflows/build-all.yml)
 
 > 🚀 基于 GitHub Actions 自动编译 **ImmortalWrt** 固件，支持三款设备一键构建、自动发布 Release。
 
@@ -24,9 +22,9 @@
 
 | 方式 | 说明 |
 |------|------|
-| 📅 **定时构建** | 每月 **1 号** 自动触发（00:00 R2S / 02:00 R4A / 04:00 K2P） |
-| 👆 **手动构建** | 进入 **Actions** → **Build ImmortalWrt Firmware** → **Run workflow** |
-| ⏱ **耗时** | 约 **2~5 小时**（完整源码编译） |
+| 📅 **定时构建** | 每月 **1 号 00:00 UTC** 自动触发，**三设备并行编译** |
+| 👆 **手动构建** | 进入 **Actions** → **Build All Devices** → **Run workflow** |
+| ⏱ **耗时** | 约 **2~5 小时**（并行编译，总时间 ≈ 最慢设备耗时） |
 | 📥 **下载** | 构建完成后进入对应 Run → **Artifacts** 或 **Releases** |
 
 > 💡 建议在睡前或出门前触发，回来就能收到固件。
@@ -41,10 +39,11 @@
 
 ```
 config/
-├── extra.config            # R2S 全局配置
+├── extra.config            # R2S 全局配置（精简 82%）
 ├── rockchip.config         # R2S 平台配置
-├── xiaomi-r4a.config       # Xiaomi R4A 软件包
-└── phicomm-k2p.config      # K2P 软件包
+├── ramips-common.config    # ramips 设备共享配置
+├── xiaomi-r4a.config       # Xiaomi R4A 软件包（可覆盖共享配置）
+└── phicomm-k2p.config      # K2P 软件包（可覆盖共享配置）
 ```
 
 示例 — 添加 passwall：
