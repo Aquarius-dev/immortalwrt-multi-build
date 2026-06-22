@@ -1,0 +1,17 @@
+name: ramips-k2p
+
+on:
+  schedule:
+    - cron: '0 0 1 * *'
+  workflow_dispatch:
+
+jobs:
+  build:
+    uses: ./.github/workflows/build-template.yml
+    with:
+      device_name: phicomm-k2p
+      target: ramips
+      subtarget: mt7621
+      profile: phicomm_k2p
+      lan_ip: 192.168.123.5
+      config_method: single-file
