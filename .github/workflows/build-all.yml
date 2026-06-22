@@ -35,7 +35,6 @@ jobs:
             config_method: single-file
             timeout_minutes: 180
 
-    timeout-minutes: ${{ matrix.timeout_minutes }}
     uses: ./.github/workflows/build-template.yml
     with:
       device_name: ${{ matrix.device_name }}
@@ -44,3 +43,4 @@ jobs:
       profile: ${{ matrix.profile }}
       lan_ip: ${{ matrix.lan_ip }}
       config_method: ${{ matrix.config_method }}
+      timeout_minutes: ${{ matrix.timeout_minutes }}

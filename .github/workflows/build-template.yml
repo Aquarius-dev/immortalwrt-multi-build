@@ -21,13 +21,17 @@ on:
       config_method:
         required: true
         type: string
+      timeout_minutes:
+        required: false
+        type: number
+        default: 420
 
 
 jobs:
   build:
     name: ${{ inputs.device_name }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 420  # caller 可设更短超时，此值作为安全兜底
+    timeout-minutes: ${{ inputs.timeout_minutes }}
 
     steps:
       - name: Maximize build space
